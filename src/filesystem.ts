@@ -18,6 +18,29 @@ interface Directory {
 
 type Entry = File | Directory
 
+/**
+ * Counts how much times a substring appears in a string.
+ * @param str 
+ * @param substr 
+ * @returns 
+ */
+const countSubstr = (str: string, substr: string): number => {
+    if (substr.length <= 0)
+        return (str.length + 1)
+
+    let n = 0, pos = 0, step = substr.length;
+
+    while (true) {
+        pos = str.indexOf(substr, pos)
+        if (pos >= 0) {
+            ++n
+            pos += step
+        } else break
+    }
+
+    return n
+}
+
 class NanoFileSystem {
     public file: string
     constructor(file: string) {
@@ -29,15 +52,24 @@ class NanoFileSystem {
         if (targetDir.charAt(targetDir.length - 1) === '/')
             targetDir = targetDir.slice(0, -1)
 
+        const subdirs: string[] = []
         const directoryContents: Entry[] = []
         const scan = this.scanFileSystem()
 
         for await (const entry of scan) {
             const dirname = path.dirname(entry.path)
 
-            if (path.dirname(entry.path) === targetDir) {
-                if (entry.path.indexOf('/', dirname.length)) {
-                    directoryContents.push({ type: 'directory', path: path.join(dirname, ) })
+            if (dirname.startsWith(targetDir)) {
+                const nextDelimiterIndex = entry.path.indexOf('/', targetDir.length + 1)
+                if (nextDelimiterIndex >= 0) {
+                    const subdirPath = entry.path.slice(0, nextDelimiterIndex)
+                    if (!subdirs.includes(subdirPath)) {
+                        subdirs.push(subdirPath)
+                        directoryContents.push({ type: 'directory', path: subdirPath })
+                    }
+                } else {
+                    // is a file
+                    directoryContents.push(entry)
                 }
             }
         }
@@ -90,7 +122,6 @@ class NanoFileSystem {
 }
 
 const main = async () => {
-    console.log('ohn')
     let f = new NanoFileSystem('fs.fdata')
 
     let dircontents = await f.readdir('/')
