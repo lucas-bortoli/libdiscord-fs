@@ -24,7 +24,7 @@ type NanoFileSystemHeaderKey = 'Filesystem-Version'|'Webhook-Url'|'Cdn-Base-Url'
 
 const BLOCK_SIZE: number = Math.floor(7.6 * 1024 * 1024)
 
-class NanoFileSystem {
+export default class NanoFileSystem {
     private webhook: Webhook
 
     public header: Map<NanoFileSystemHeaderKey, string>
@@ -228,13 +228,3 @@ class NanoFileSystem {
         return { type: 'file', path: elements[0], size: parseInt(elements[1]), ctime: parseInt(elements[2]), metaptr: elements[3] }
     }
 }
-
-const main = async () => {
-    let f = new NanoFileSystem('./fs.fdata')
-    await f.init()
-    const readStream = fs.createReadStream('./test.img')
-
-    await f.writeFileFromStream(readStream, 'gaming.img')
-}
-
-main()
