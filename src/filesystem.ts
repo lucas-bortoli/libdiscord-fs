@@ -1,10 +1,9 @@
 import * as fs from 'fs'
+import * as fsp from 'fs/promises'
 import * as path from 'path/posix'
 import * as readline from 'readline'
-import * as Repl from 'repl'
-import fetch from 'node-fetch'
-import { Writable, Readable } from 'stream'
-import DiscordUpload from './discordUpload.js'
+import { Readable } from 'stream'
+import Webhook from './upload.js'
 
 interface File {
     type: 'file',
@@ -23,16 +22,28 @@ type Entry = File | Directory
 
 type NanoFileSystemHeaderKey = 'Filesystem-Version'|'Webhook-Url'|'Cdn-Base-Url'
 
+const BLOCK_SIZE: number = Math.floor(7.6 * 1024 * 1024)
 
 class NanoFileSystem {
-    private readonly blockSize: number = Math.floor(7.6 * 1024 * 1024)
+    private webhook: Webhook
 
     public header: Map<NanoFileSystemHeaderKey, string>
-    public readonly dataFile: string
+    public dataFile: string
 
     constructor(dataFile: string) {
         this.dataFile = dataFile
         this.header = new Map()
+    }
+
+    public async init() {
+        const scan = this.scanFileSystem()
+
+        for await (const entry of scan) {
+            scan.return()
+            break
+        }
+
+        this.webhook = new Webhook(this.header.get('Webhook-Url'))
     }
 
     /*public async createReadStream(file: File): Promise<ReadableStream> {
@@ -46,24 +57,53 @@ class NanoFileSystem {
         return stream
     }*/
 
-    public async writeFileFromStream(stream: Readable, props: { filePath: string, size: number, ctime: number }): Promise<void> {
-        const webhookUrl = this.header.get('Webhook-Url')
-        const piecesPointers: string[] = []
+    public writeFileFromStream(stream: Readable, filePath: string): Promise<File> {
+        return new Promise(async resolve => {
+            const piecesPointers: string[] = []
 
-        stream.on('readable', async () => {
-            let chunk: Buffer
-            while (null !== (chunk = stream.read(this.blockSize))) {
-                console.log(`Read ${chunk.length} bytes of data...`);
+            let uploadedPieces = 0
+            let fileSize = 0
+            let creationTime = Date.now()
 
-                // upload chunk
-                const piecePointer = await DiscordUpload('chunk', chunk, webhookUrl)
-                piecesPointers.push(piecePointer.replace('https://cdn.discordapp.com/attachments/', ''))
+            // Callback called when the full file upload finishes.
+            const onUploadFinish = async () => {
+                // Upload file pieces array to the CDN. It's a comma-separated string.
+                const metaPtr = await this.webhook.uploadFile('meta', Buffer.from(piecesPointers.join(',')))
+
+                // Create file entry
+                const fileEntry: File = {
+                    type: 'file',
+                    path: filePath,
+                    size: fileSize,
+                    ctime: creationTime,
+                    metaptr: metaPtr.replace('https://cdn.discordapp.com/attachments/', '')
+                }
+
+                // Write it into the database
+                const entryAsString: string = this.serializeFileEntry(fileEntry)
+
+                await this.addFileEntry(entryAsString)
             }
+
+            stream.on('readable', async () => {
+                let chunk: Buffer
+                while (null !== (chunk = stream.read(BLOCK_SIZE))) {
+                    console.log(`${chunk.length} bytes read.`)
+
+                    // Increment trackers
+                    fileSize += chunk.length
+                    uploadedPieces++
+
+                    // Upload chunk, retrying if it fails
+                    const piecePointer = await this.webhook.uploadFile('chunk', chunk)
+
+                    piecesPointers.push(piecePointer.replace('https://cdn.discordapp.com/attachments/', ''))
+
+                    if (stream.readableEnded)
+                        onUploadFinish()
+                }
+            })
         })
-
-        console.log(piecesPointers)
-
-        // return stream
     }
 
     public async getFile(filePath: string): Promise<File> {
@@ -168,26 +208,31 @@ class NanoFileSystem {
                 this.header.set(key, value)
             } else {
                 // Parse body
-                const elements = line.split(':')
-
-                const path: string = elements[0]
-                const size: number = parseInt(elements[1])
-                const ctime: number = parseInt(elements[2])
-                const metaptr: string = elements[3]
-                
-                yield { type: 'file', path, size, ctime, metaptr }
+                yield this.parseFileEntry(line)
             }
         }
+    }
+
+    private async addFileEntry(line: string): Promise<void> {
+        return fsp.appendFile(this.dataFile, line)
+    }
+
+    private serializeFileEntry(file: File): string {
+        return [ file.path, file.size.toString(), file.ctime.toString(), file.metaptr ].join(':')
+    }
+
+    private parseFileEntry(line: string): File {
+        const elements = line.split(':') 
+        return { type: 'file', path: elements[0], size: parseInt(elements[1]), ctime: parseInt(elements[2]), metaptr: elements[3] }
     }
 }
 
 const main = async () => {
     let f = new NanoFileSystem('./fs.fdata')
-    await f.readdir('/')
+    await f.init()
     const readStream = fs.createReadStream('./test.img')
 
-    await f.writeFileFromStream(readStream, null)
-    console.log('wrote')
+    await f.writeFileFromStream(readStream, 'gaming.img')
 }
 
 main()
