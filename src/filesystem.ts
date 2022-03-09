@@ -83,6 +83,8 @@ class NanoFileSystem {
                 const entryAsString: string = this.serializeFileEntry(fileEntry)
 
                 await this.addFileEntry(entryAsString)
+
+                resolve(fileEntry)
             }
 
             stream.on('readable', async () => {
