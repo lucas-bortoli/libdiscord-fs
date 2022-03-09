@@ -2,14 +2,16 @@ import * as fs from 'fs'
 import * as path from 'path/posix'
 import * as readline from 'readline'
 import * as Repl from 'repl'
+import fetch from 'node-fetch'
+import { Writable, Readable } from 'stream'
+import DiscordUpload from './discordUpload.js'
 
 interface File {
     type: 'file',
     path: string,
     size: number,
     ctime: number,
-    md5: string,
-    msgid: string
+    metaptr: string
 }
 
 interface Directory {
@@ -19,15 +21,66 @@ interface Directory {
 
 type Entry = File | Directory
 
-class NanoFileSystem {
-    public readonly file: string
+type NanoFileSystemHeaderKey = 'Filesystem-Version'|'Webhook-Url'|'Cdn-Base-Url'
 
-    constructor(file: string) {
-        this.file = file
+
+class NanoFileSystem {
+    private readonly blockSize: number = Math.floor(7.6 * 1024 * 1024)
+
+    public header: Map<NanoFileSystemHeaderKey, string>
+    public readonly dataFile: string
+
+    constructor(dataFile: string) {
+        this.dataFile = dataFile
+        this.header = new Map()
     }
 
-    public async createReadStream() {
+    /*public async createReadStream(file: File): Promise<ReadableStream> {
+        const webhookUrl = this.header.get('Webhook-Url')
+        const stream = new Duplex()
+
+        const piecesUrl = this.header.get('Cdn-Base-Url') + file.piecesptr + '/pieces'
+        const filePieces: string[]
+        const pieces = await fetch(piecesUrl).then(r =>)
         
+        return stream
+    }*/
+
+    public async writeFileFromStream(stream: Readable, props: { filePath: string, size: number, ctime: number }): Promise<void> {
+        const webhookUrl = this.header.get('Webhook-Url')
+        const piecesPointers: string[] = []
+
+        stream.on('readable', async () => {
+            let chunk: Buffer
+            while (null !== (chunk = stream.read(this.blockSize))) {
+                console.log(`Read ${chunk.length} bytes of data...`);
+
+                // upload chunk
+                const piecePointer = await DiscordUpload('chunk', chunk, webhookUrl)
+                piecesPointers.push(piecePointer.replace('https://cdn.discordapp.com/attachments/', ''))
+            }
+        })
+
+        console.log(piecesPointers)
+
+        // return stream
+    }
+
+    public async getFile(filePath: string): Promise<File> {
+        // Remove trailing /
+        if (filePath.charAt(filePath.length - 1) === '/')
+            filePath = filePath.slice(0, -1)
+
+        const scan = this.scanFileSystem()
+
+        for await (const entry of scan) {
+            if (entry.path === filePath) {
+                scan.return()
+                return entry
+            }
+        }
+
+        throw new Error('File doesn\'t exist')
     }
 
     public async exists(targetPath: string): Promise<boolean> {
@@ -82,14 +135,17 @@ class NanoFileSystem {
         return directoryContents
     }
 
+    /**
+     * Util generator function that yields for each file of the filesystem.
+     */
     private async *scanFileSystem(): AsyncGenerator<File, void> {
-        const stream = fs.createReadStream('fs.fdata')
+        const stream = fs.createReadStream(this.dataFile)
         const rl = readline.createInterface({
             input: stream,
             crlfDelay: Infinity
         })
     
-        const headers = new Map()
+        this.header = this.header || new Map()
     
         let alreadyReadHeaders = false
         let lineIndex = 0
@@ -106,10 +162,10 @@ class NanoFileSystem {
                 // Parse headers
                 const elements = line.split(':')
                 
-                const key = elements.pop().trim()
+                const key = elements.shift().trim() as NanoFileSystemHeaderKey
                 const value = elements.join(':').trim()
-    
-                headers.set(key, value)
+                console.log(key, value)
+                this.header.set(key, value)
             } else {
                 // Parse body
                 const elements = line.split(':')
@@ -117,35 +173,21 @@ class NanoFileSystem {
                 const path: string = elements[0]
                 const size: number = parseInt(elements[1])
                 const ctime: number = parseInt(elements[2])
-                const md5: string = elements[3]
-                const msgid: string = elements[4]
+                const metaptr: string = elements[3]
                 
-                yield { type: 'file', path, size, ctime, md5, msgid }
+                yield { type: 'file', path, size, ctime, metaptr }
             }
         }
     }
 }
 
 const main = async () => {
-    let f = new NanoFileSystem('fs.fdata')
+    let f = new NanoFileSystem('./fs.fdata')
+    await f.readdir('/')
+    const readStream = fs.createReadStream('./test.img')
 
-    Repl.start({
-        prompt: 'fs$ ',
-        eval: async (cmd: string, context, file, cb) => {
-            const args = cmd.trim().split(' ')
-            const cmdName = args.shift()
-            
-            if (typeof f[cmdName] === 'function') {
-                console.time(cmdName)
-                const result = await f[cmdName](args.join(' '))
-                console.timeEnd(cmdName)
-                return cb(null, result)
-            } else {
-                return cb(new Error('unknown command'), null)
-            }
-        }
-    })
+    await f.writeFileFromStream(readStream, null)
+    console.log('wrote')
 }
 
-if (process.argv.includes('--fs-repl'))
-    main()
+main()
