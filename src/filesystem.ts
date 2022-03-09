@@ -27,6 +27,7 @@ const BLOCK_SIZE: number = Math.floor(7.6 * 1024 * 1024)
 
 export default class NanoFileSystem {
     private webhook: Webhook
+    private cache: string[]
 
     public header: Map<NanoFileSystemHeaderKey, string>
     public dataFile: string
@@ -34,6 +35,7 @@ export default class NanoFileSystem {
     constructor(dataFile: string, webhookUrl: string) {
         this.dataFile = dataFile
         this.header = new Map()
+        this.cache = []
         this.webhook = new Webhook(webhookUrl)
 
         // Default properties; can be overriden by the data file
@@ -42,15 +44,58 @@ export default class NanoFileSystem {
         this.header.set('Author', process.env.USER || 'null')
     }
 
-    public async init() {
-        await this.createDataIfNotExists()
-        
-        const scan = this.scanFileSystem()
+    public async loadDataFile() {
+        // Noop if file doesn't exist
+        if (!await Utils.fsp_fileExists(this.dataFile))
+            return
 
-        for await (const entry of scan) {
-            scan.return()
-            break
+        const stream = fs.createReadStream(this.dataFile)
+        const rl = readline.createInterface({
+            input: stream,
+            crlfDelay: Infinity
+        })
+    
+        let alreadyReadHeaders = false
+        let lineIndex = 0
+    
+        for await (const line of rl) {
+            lineIndex++
+    
+            if (line.length === 0) {
+                alreadyReadHeaders = true
+                continue
+            }
+    
+            if (!alreadyReadHeaders) {
+                // Parse headers
+                const elements = line.split(':')
+                
+                const key = elements.shift().trim() as NanoFileSystemHeaderKey
+                const value = elements.join(':').trim()
+                
+                this.header.set(key, value)
+            } else {
+                // Add file entry to cache
+                this.cache.push(line)
+            }
         }
+    }
+
+    public async writeDataFile() {
+        // Create, or replace, data file
+        const file = await fsp.open(this.dataFile, 'w+')
+
+        // Write header entries
+        for (const [ key, value ] of this.header)
+            file.write(Buffer.from(`${key}: ${value}\n`, 'utf-8'))
+        
+        file.write(Buffer.from('\n', 'utf-8'))
+
+        // Write file entries
+        for (const line of this.cache)
+            file.write(Buffer.from(line + '\n', 'utf-8'))
+
+        await file.close()
     }
 
     /*public async createReadStream(file: File): Promise<ReadableStream> {
@@ -126,13 +171,11 @@ export default class NanoFileSystem {
         if (filePath.charAt(filePath.length - 1) === '/')
             filePath = filePath.slice(0, -1)
 
-        const scan = this.scanFileSystem()
+        for (const line of this.cache) {
+            const entry = this.parseFileEntry(line)
 
-        for await (const entry of scan) {
-            if (entry.path === filePath) {
-                scan.return()
+            if (entry.path === filePath) 
                 return entry
-            }
         }
 
         throw new Error('File doesn\'t exist')
@@ -143,13 +186,11 @@ export default class NanoFileSystem {
         if (targetPath.charAt(targetPath.length - 1) === '/')
             targetPath = targetPath.slice(0, -1)
 
-        const scan = this.scanFileSystem()
+        for await (const line of this.cache) {
+            const entry = this.parseFileEntry(line)
 
-        for await (const entry of scan) {
-            if (entry.path === targetPath || entry.path.startsWith(targetPath + '/')) {
-                scan.return()
+            if (entry.path === targetPath || entry.path.startsWith(targetPath + '/'))
                 return true
-            }
         }
 
         return false
@@ -162,10 +203,10 @@ export default class NanoFileSystem {
 
         const subdirs: string[] = []
         const directoryContents: Entry[] = []
-        const scan = this.scanFileSystem()
 
         // Scan every entry in the filesystem
-        for await (const entry of scan) {
+        for await (const line of this.cache) {
+            const entry = this.parseFileEntry(line)
             const dirname = path.dirname(entry.path)
 
             // Checks if entry is a child (or grandchild, etc.) of the given path
@@ -189,63 +230,23 @@ export default class NanoFileSystem {
 
         return directoryContents
     }
-    
-    /**
-     * Util generator function that yields for each file of the filesystem.
-     */
-    private async *scanFileSystem(): AsyncGenerator<File, void> {
-        const stream = fs.createReadStream(this.dataFile)
-        const rl = readline.createInterface({
-            input: stream,
-            crlfDelay: Infinity
-        })
-    
-        this.header = this.header || new Map()
-    
-        let alreadyReadHeaders = false
-        let lineIndex = 0
-    
-        for await (const line of rl) {
-            lineIndex++
-    
-            if (line.length === 0) {
-                alreadyReadHeaders = true
-                continue
-            }
-    
-            if (!alreadyReadHeaders) {
-                // Parse headers
-                const elements = line.split(':')
-                
-                const key = elements.shift().trim() as NanoFileSystemHeaderKey
-                const value = elements.join(':').trim()
-                
-                this.header.set(key, value)
-            } else {
-                // Parse body
-                yield this.parseFileEntry(line)
-            }
-        }
-    }
-
-    private async createDataIfNotExists() {
-        // If file exists, exit early
-        if (await Utils.fsp_fileExists(this.dataFile)) return
-
-        // Create file
-        const file = await fsp.open(this.dataFile, 'w')
-
-        for (const [ key, value ] of this.header) {
-            file.write(Buffer.from(`${key}: ${value}\n`, 'utf-8'))
-        }
-
-        file.write(Buffer.from('\n', 'utf-8'))
-
-        await file.close()
-    }
 
     private async addFileEntry(line: string): Promise<void> {
-        return fsp.appendFile(this.dataFile, line + '\n')
+        const newEntryPath = line.slice(0, line.indexOf(':'))
+
+        // If entry already exists, replace it
+        for (let i = 0; i < this.cache.length; i++) {
+            const oldEntryPath = this.cache[i].slice(0, this.cache[i].indexOf(':'))
+            if (newEntryPath === oldEntryPath) {
+                this.cache[i] = line
+                return
+            }
+        }
+
+        // If we're here, then it's a new entry. Add it to the cache
+        this.cache.push(line)
+
+        return
     }
 
     private serializeFileEntry(file: File): string {

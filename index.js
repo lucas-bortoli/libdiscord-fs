@@ -4,8 +4,8 @@ import * as fs from 'fs'
 const main = async () => {
     const nFS = new Filesystem('data.nfs', process.env.WEBHOOK)
 
-    await nFS.init()
-
+    await nFS.loadDataFile()
+    
     const uploadFile = async (localPath, nfsPath) => {
         const stream = fs.createReadStream(localPath, { encoding: 'binary' })
         const entry = await nFS.writeFileFromStream(stream, nfsPath)
@@ -13,7 +13,11 @@ const main = async () => {
         return entry
     }
 
-    uploadFile('index.js', '/dev/index.js')
+    await uploadFile('index.js', '/dev/index.js')
+
+    await nFS.writeDataFile()
+
+    console.log('end')
 }
 
 main()
