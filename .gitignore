@@ -106,3 +106,4 @@ dist
 test.img
 *.fdata
 *.data
+*.nfs

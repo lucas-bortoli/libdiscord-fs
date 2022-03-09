@@ -4,6 +4,7 @@ import * as path from 'path/posix'
 import * as readline from 'readline'
 import { Readable } from 'stream'
 import Webhook from './upload.js'
+import Utils from './utils.js'
 
 interface File {
     type: 'file',
@@ -20,7 +21,7 @@ interface Directory {
 
 type Entry = File | Directory
 
-type NanoFileSystemHeaderKey = 'Filesystem-Version'|'Webhook-Url'|'Cdn-Base-Url'
+type NanoFileSystemHeaderKey = 'Filesystem-Version' | 'Description' | 'Author'
 
 const BLOCK_SIZE: number = Math.floor(7.6 * 1024 * 1024)
 
@@ -30,20 +31,26 @@ export default class NanoFileSystem {
     public header: Map<NanoFileSystemHeaderKey, string>
     public dataFile: string
 
-    constructor(dataFile: string) {
+    constructor(dataFile: string, webhookUrl: string) {
         this.dataFile = dataFile
         this.header = new Map()
+        this.webhook = new Webhook(webhookUrl)
+
+        // Default properties; can be overriden by the data file
+        this.header.set('Filesystem-Version', '1.1')
+        this.header.set('Description', 'File system')
+        this.header.set('Author', process.env.USER || 'null')
     }
 
     public async init() {
+        await this.createDataIfNotExists()
+        
         const scan = this.scanFileSystem()
 
         for await (const entry of scan) {
             scan.return()
             break
         }
-
-        this.webhook = new Webhook(this.header.get('Webhook-Url'))
     }
 
     /*public async createReadStream(file: File): Promise<ReadableStream> {
@@ -87,9 +94,15 @@ export default class NanoFileSystem {
                 resolve(fileEntry)
             }
 
+            // Make sure we're dealing with Buffer objects, and not strings.
+            stream.setEncoding(null)
+
             stream.on('readable', async () => {
                 let chunk: Buffer
                 while (null !== (chunk = stream.read(BLOCK_SIZE))) {
+                    if (!Buffer.isBuffer(chunk))
+                        chunk = Buffer.from(chunk)
+                        
                     console.log(`${chunk.length} bytes read.`)
 
                     // Increment trackers
@@ -176,7 +189,7 @@ export default class NanoFileSystem {
 
         return directoryContents
     }
-
+    
     /**
      * Util generator function that yields for each file of the filesystem.
      */
@@ -206,7 +219,7 @@ export default class NanoFileSystem {
                 
                 const key = elements.shift().trim() as NanoFileSystemHeaderKey
                 const value = elements.join(':').trim()
-                console.log(key, value)
+                
                 this.header.set(key, value)
             } else {
                 // Parse body
@@ -215,8 +228,24 @@ export default class NanoFileSystem {
         }
     }
 
+    private async createDataIfNotExists() {
+        // If file exists, exit early
+        if (await Utils.fsp_fileExists(this.dataFile)) return
+
+        // Create file
+        const file = await fsp.open(this.dataFile, 'w')
+
+        for (const [ key, value ] of this.header) {
+            file.write(Buffer.from(`${key}: ${value}\n`, 'utf-8'))
+        }
+
+        file.write(Buffer.from('\n', 'utf-8'))
+
+        await file.close()
+    }
+
     private async addFileEntry(line: string): Promise<void> {
-        return fsp.appendFile(this.dataFile, line)
+        return fsp.appendFile(this.dataFile, line + '\n')
     }
 
     private serializeFileEntry(file: File): string {
