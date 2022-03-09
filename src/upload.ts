@@ -19,7 +19,7 @@ export default class Webhook {
      */
     async uploadFile(fileName: string, data: Buffer): Promise<string> {
         let msg
-        console.log(Buffer.isBuffer(data))
+        
         while (!msg) {
             try {
                 msg = await this.webhook.send({
