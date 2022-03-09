@@ -1,6 +1,7 @@
 import * as fs from 'fs'
 import * as path from 'path/posix'
 import * as readline from 'readline'
+import * as Repl from 'repl'
 
 interface File {
     type: 'file',
@@ -18,36 +19,35 @@ interface Directory {
 
 type Entry = File | Directory
 
-/**
- * Counts how much times a substring appears in a string.
- * @param str 
- * @param substr 
- * @returns 
- */
-const countSubstr = (str: string, substr: string): number => {
-    if (substr.length <= 0)
-        return (str.length + 1)
-
-    let n = 0, pos = 0, step = substr.length;
-
-    while (true) {
-        pos = str.indexOf(substr, pos)
-        if (pos >= 0) {
-            ++n
-            pos += step
-        } else break
-    }
-
-    return n
-}
-
 class NanoFileSystem {
-    public file: string
+    public readonly file: string
+
     constructor(file: string) {
         this.file = file
     }
 
-    async readdir(targetDir): Promise<Entry[]> {
+    public async createReadStream() {
+        
+    }
+
+    public async exists(targetPath: string): Promise<boolean> {
+        // Remove trailing /
+        if (targetPath.charAt(targetPath.length - 1) === '/')
+            targetPath = targetPath.slice(0, -1)
+
+        const scan = this.scanFileSystem()
+
+        for await (const entry of scan) {
+            if (entry.path === targetPath || entry.path.startsWith(targetPath + '/')) {
+                scan.return()
+                return true
+            }
+        }
+
+        return false
+    }
+
+    public async readdir(targetDir): Promise<Entry[]> {
         // Remove trailing /
         if (targetDir.charAt(targetDir.length - 1) === '/')
             targetDir = targetDir.slice(0, -1)
@@ -56,20 +56,25 @@ class NanoFileSystem {
         const directoryContents: Entry[] = []
         const scan = this.scanFileSystem()
 
+        // Scan every entry in the filesystem
         for await (const entry of scan) {
             const dirname = path.dirname(entry.path)
 
+            // Checks if entry is a child (or grandchild, etc.) of the given path
             if (dirname.startsWith(targetDir)) {
                 const nextDelimiterIndex = entry.path.indexOf('/', targetDir.length + 1)
-                if (nextDelimiterIndex >= 0) {
+
+                // Check if entry is a direct child of the given path (isn't in a subdirectory)
+                if (nextDelimiterIndex < 0) {
+                    directoryContents.push(entry)
+                } else {
+                    // The entry isn't a direct child, so we find its nearest parent in the given directory
                     const subdirPath = entry.path.slice(0, nextDelimiterIndex)
+
                     if (!subdirs.includes(subdirPath)) {
                         subdirs.push(subdirPath)
                         directoryContents.push({ type: 'directory', path: subdirPath })
                     }
-                } else {
-                    // is a file
-                    directoryContents.push(entry)
                 }
             }
         }
@@ -77,7 +82,7 @@ class NanoFileSystem {
         return directoryContents
     }
 
-    async *scanFileSystem(): AsyncGenerator<File> {
+    private async *scanFileSystem(): AsyncGenerator<File, void> {
         const stream = fs.createReadStream('fs.fdata')
         const rl = readline.createInterface({
             input: stream,
@@ -124,9 +129,23 @@ class NanoFileSystem {
 const main = async () => {
     let f = new NanoFileSystem('fs.fdata')
 
-    let dircontents = await f.readdir('/')
-
-    console.log(dircontents)
+    Repl.start({
+        prompt: 'fs$ ',
+        eval: async (cmd: string, context, file, cb) => {
+            const args = cmd.trim().split(' ')
+            const cmdName = args.shift()
+            
+            if (typeof f[cmdName] === 'function') {
+                console.time(cmdName)
+                const result = await f[cmdName](args.join(' '))
+                console.timeEnd(cmdName)
+                return cb(null, result)
+            } else {
+                return cb(new Error('unknown command'), null)
+            }
+        }
+    })
 }
 
-main()
+if (process.argv.includes('--fs-repl'))
+    main()
