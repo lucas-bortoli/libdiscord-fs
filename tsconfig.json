@@ -5,7 +5,8 @@
         "lib": [ "ES2021" ],
         "moduleResolution": "node",
         "module": "ES2022",
-        "esModuleInterop": true
+        "esModuleInterop": true,
+        "declaration": true
     },
     "include": [ "src/**/*" ]
 }
