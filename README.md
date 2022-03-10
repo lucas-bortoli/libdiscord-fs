@@ -1,4 +1,4 @@
-# Discord-FS
+# libdiscord-fs
 Quickly share files and store them on Discord
 
 ## Install
@@ -9,7 +9,7 @@ $ npm install @lucas-bortoli/libdiscord-fs
 ## Usage
 
 ```
-NanoFS Command Line Interface
+libdiscord-fs Command Line Interface
 
 Commands are given as command line arguments. For example:
 
@@ -36,5 +36,5 @@ All remote paths MUST be absolute.
 The environment variable WEBHOOK must be set to the Discord webhook url where files will be sent to, e.g:
     $ export WEBHOOK="https://discord.com/api/webhooks/854112906251402616/KBd5RggV22hYTggRpLo5WyfMey9VHABlu7cZ8l7EhGt6GsjiuPgqh2negcHW08i7RV2f"
 
-NanoFS (c) 2022 Lucas Bortoli
+libdiscord-fs (c) 2022 Lucas Bortoli
 ```
