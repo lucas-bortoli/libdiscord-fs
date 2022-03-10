@@ -6,23 +6,7 @@ import { Duplex, Readable, Writable } from 'stream'
 import fetch from 'node-fetch'
 import Webhook from './upload.js'
 import Utils from './utils.js'
-
-interface File {
-    type: 'file',
-    path: string,
-    size: number,
-    ctime: number,
-    metaptr: string
-}
-
-interface Directory {
-    type: 'directory',
-    path: string
-}
-
-type Entry = File | Directory
-
-type NanoFileSystemHeaderKey = 'Filesystem-Version' | 'Description' | 'Author'
+import { NanoFileSystemHeaderKey, File, Directory, Entry } from './types.js'
 
 const BLOCK_SIZE: number = Math.floor(7.6 * 1024 * 1024)
 

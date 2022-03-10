@@ -1,6 +1,6 @@
 {
     "compilerOptions": {
-        "outDir": "dist/",
+        "outDir": "lib/",
         "target": "ES2021",
         "lib": [ "ES2021" ],
         "moduleResolution": "node",

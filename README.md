@@ -1,5 +1,12 @@
-# nano-share
+# Discord-FS
 Quickly share files and store them on Discord
+
+## Install
+```
+$ npm install @lucas-bortoli/libdiscord-fs
+```
+
+## Usage
 
 ```
 NanoFS Command Line Interface
