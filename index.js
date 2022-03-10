@@ -1,31 +1,36 @@
 import Filesystem from './dist/filesystem.js'
 import * as fs from 'fs'
-import Utils from './dist/utils.js'
 
 const main = async () => {
     const nFS = new Filesystem('data.nfs', process.env.WEBHOOK)
 
     await nFS.loadDataFile()
     
-    const uploadFile = async (localPath, nfsPath) => {
-        const stream = fs.createReadStream(localPath, { encoding: 'binary' })
-        const entry = await nFS.writeFileFromStream(stream, nfsPath)
+    const uploadFile = (localPath, nfsPath) => {
+        return new Promise(async resolve => {
+            const localStream = fs.createReadStream(localPath)
+            const remoteStream = await nFS.createWriteStream(nfsPath)
+    
+            localStream.pipe(remoteStream)
 
-        return entry
+            remoteStream.on('error', err => { throw err })
+            remoteStream.once('finish', () => resolve())
+        })
     }
 
     const downloadFile = (nfsPath, localPath) => {
         return new Promise(async resolve => {
-            const entry = await nFS.getFile(nfsPath)
-            const localFileStream = fs.createWriteStream(localPath)
-            const downloadStream = await nFS.getFileStream(entry)
+            const remoteStream = await nFS.createReadStream(nfsPath)
+            const localStream = fs.createWriteStream(localPath)
+
             let byteCount = 0
 
-            downloadStream.pipe(localFileStream)
+            remoteStream.pipe(localStream)
 
-            downloadStream.on('data', chunk => process.stdout.write(`\r${byteCount += chunk.length} bytes downloaded`))
+            remoteStream.on('data', chunk => process.stdout.write(`\r${byteCount += chunk.length} bytes downloaded`))
+            remoteStream.on('error', err => { throw err })
 
-            downloadStream.once('end', () => {
+            localStream.once('finish', () => {
                 console.log('\nWrote file ' + localPath)
                 resolve()
             })
@@ -45,10 +50,6 @@ const main = async () => {
             await downloadFile(nfsPath, targetPath)
         }
     }
-
-    await Utils.Wait(100)
-
-    console.log('Finishing')
 
     await nFS.writeDataFile()
 }

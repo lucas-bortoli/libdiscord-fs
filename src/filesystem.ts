@@ -2,7 +2,7 @@ import * as fs from 'fs'
 import * as fsp from 'fs/promises'
 import * as path from 'path/posix'
 import * as readline from 'readline'
-import { Duplex, Readable } from 'stream'
+import { Duplex, Readable, Writable } from 'stream'
 import fetch from 'node-fetch'
 import Webhook from './upload.js'
 import Utils from './utils.js'
@@ -57,11 +57,8 @@ export default class NanoFileSystem {
         })
     
         let alreadyReadHeaders = false
-        let lineIndex = 0
     
         for await (const line of rl) {
-            lineIndex++
-    
             if (line.length === 0) {
                 alreadyReadHeaders = true
                 continue
@@ -99,7 +96,9 @@ export default class NanoFileSystem {
         await file.close()
     }
 
-    public async getFileStream(file: File): Promise<Readable> {
+    public async createReadStream(filePath: string): Promise<Readable> {
+        const file = await this.getFile(filePath)
+
         const piecesUrl = 'https://cdn.discordapp.com/attachments/' + file.metaptr
         const piecesBlob = await fetch(piecesUrl).then(r => r.arrayBuffer())
         const pieces = new TextDecoder('utf-8').decode(piecesBlob).split(',')
@@ -112,8 +111,6 @@ export default class NanoFileSystem {
                 if (pieceIndex >= pieces.length)
                     this.push(null)
 
-                await Utils.Wait(100)
-
                 const chunkUrl = 'https://cdn.discordapp.com/attachments/' + pieces[pieceIndex]
                 const chunk = await fetch(chunkUrl).then(r => r.arrayBuffer())
                 stream.push(Buffer.from(chunk))
@@ -125,22 +122,54 @@ export default class NanoFileSystem {
         return stream
     }
 
-    public writeFileFromStream(stream: Readable, filePath: string): Promise<File> {
-        return new Promise(async resolve => {
-            const piecesPointers: string[] = []
+    public async createWriteStream(filePath: string): Promise<Writable> {
+        let queue: Buffer[] = []
+        let that = this
 
-            let uploadedPieces = 0
-            let fileSize = 0
-            let creationTime = Date.now()
+        let fileSize = 0
+        let creationTime = Date.now()
+        let piecesPointers: string[] = []
 
-            // Callback called when the full file upload finishes.
-            let onUploadFinishCalled = false
-            const onUploadFinish = async () => {
-                onUploadFinishCalled = true
-                console.log('readableEnded')
+        /**
+         * Flushes (uploads) a block of data to the webhook.
+         */
+        const flush = async (chunk: Buffer) => {
+            if (chunk.length > BLOCK_SIZE)
+                console.warn(`Chunk length (${chunk.length} bytes) is bigger than maximum block size (${BLOCK_SIZE} bytes)!`)
+
+            const piecePointer = await that.webhook.uploadFile('chunk', chunk)
+            piecesPointers.push(piecePointer.replace('https://cdn.discordapp.com/attachments/', ''))
+            fileSize += chunk.length
+        }
+
+        return new Writable({
+            decodeStrings: false,
+            async write(chunk: Buffer, encoding, cb) {
+                if (!Buffer.isBuffer(chunk))
+                    return cb(new TypeError('Provided chunk isn\'t a Buffer! Make sure to not specify any encoding on the stream piped to Filesystem#createWriteStream.'))
+
+                // If adding this buffer to the queue would exceed the block size, then it's time to
+                // upload all queued chunks.
+                // If not, add it to the queue.
+                if (queue.map(b => b.length).reduce((a,b) => a+b, 0) + chunk.length >= BLOCK_SIZE) {
+                    const buffer = Buffer.concat(queue)
+                    await flush(buffer)
+                    queue = [ chunk ]
+                } else {
+                    queue.push(chunk)
+                }
+
+                cb()
+            },
+
+            // Called before stream closes, used to write any remaining buffered data.
+            async final(cb) {
+                // Flush remaining data in queue
+                const buffer = Buffer.concat(queue)
+                await flush(buffer)
 
                 // Upload file pieces array to the CDN. It's a comma-separated string.
-                const metaPtr = await this.webhook.uploadFile('meta', Buffer.from(piecesPointers.join(',')))
+                const metaPtr = await that.webhook.uploadFile('meta', Buffer.from(piecesPointers.join(',')))
 
                 // Create file entry
                 const fileEntry: File = {
@@ -152,51 +181,12 @@ export default class NanoFileSystem {
                 }
 
                 // Write it into the database
-                const entryAsString: string = this.serializeFileEntry(fileEntry)
+                const entryAsString: string = that.serializeFileEntry(fileEntry)
+                await that.addFileEntry(entryAsString)
 
-                await this.addFileEntry(entryAsString)
-
-                resolve(fileEntry)
+                // End stream
+                cb()
             }
-
-            // Make sure we're dealing with Buffer objects, and not strings.
-            stream.setEncoding(null)
-            stream.pause()
-
-            let chunkUploadDone = true
-
-            stream.on('readable', async () => {
-                // If previous chunk hasn't finished uploading yet, wait for it
-                // to be done before reading more data from the file stream.
-                while (!chunkUploadDone) await Utils.Wait(50)
-
-                let chunk: Buffer
-
-                while (null !== (chunk = stream.read(BLOCK_SIZE))) {
-                    if (!Buffer.isBuffer(chunk))
-                        chunk = Buffer.from(chunk)
-                        
-                    console.log(`${chunk.length} bytes read.`)
-
-                    // Increment trackers
-                    fileSize += chunk.length
-                    uploadedPieces++
-
-                    // Upload chunk, retrying if it fails
-                    chunkUploadDone = false
-
-                    console.log('Starting upload of chunk.')
-                    const piecePointer = await this.webhook.uploadFile('chunk', chunk)
-                    console.log('Chunk upload finish.')
-
-                    piecesPointers.push(piecePointer.replace('https://cdn.discordapp.com/attachments/', ''))
-
-                    if (stream.readableEnded && !onUploadFinishCalled)
-                        onUploadFinish()
-
-                    chunkUploadDone = true
-                }
-            })
         })
     }
 
