@@ -10,6 +10,11 @@ const sizeOf = function (bytes) {
 }
 
 const main = async () => {
+    if (!process.env.WEBHOOK) {
+        console.error('Environment variable $WEBHOOK not set! See the help page for more information.')
+        return
+    }
+
     const args = process.argv.slice(2)
 
     if (args.includes('--help') || args.includes('-h')) {
@@ -35,6 +40,9 @@ Available commands:
 
 All local paths SHOULD be absolute.
 All remote paths MUST be absolute.
+
+The environment variable WEBHOOK must be set to the Discord webhook url where files will be sent to, e.g:
+    $ export WEBHOOK="https://discord.com/api/webhooks/854112906251402616/KBd5RggV22hYTggRpLo5WyfMey9VHABlu7cZ8l7EhGt6GsjiuPgqh2negcHW08i7RV2f"
 
 NanoFS (c) 2022 Lucas Bortoli`)
         return
