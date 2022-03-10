@@ -97,7 +97,7 @@ export default class NanoFileSystem {
     }
 
     public async createReadStream(filePath: string): Promise<Readable> {
-        const file = await this.getFile(filePath)
+        const file = await this.getFileEntry(filePath)
 
         const piecesUrl = 'https://cdn.discordapp.com/attachments/' + file.metaptr
         const piecesBlob = await fetch(piecesUrl).then(r => r.arrayBuffer())
@@ -190,7 +190,7 @@ export default class NanoFileSystem {
         })
     }
 
-    public async getFile(filePath: string): Promise<File> {
+    public async getFileEntry(filePath: string): Promise<File> {
         // Remove trailing /
         if (filePath.charAt(filePath.length - 1) === '/')
             filePath = filePath.slice(0, -1)
