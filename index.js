@@ -1,5 +1,13 @@
 import Filesystem from './dist/filesystem.js'
 import * as fs from 'fs'
+import { basename } from 'path/posix'
+
+// https://stackoverflow.com/a/28120564
+const sizeOf = function (bytes) {
+    if (bytes == 0) { return "0.00 B"; }
+    var e = Math.floor(Math.log(bytes) / Math.log(1024));
+    return (bytes/Math.pow(1024, e)).toFixed(2)+' '+' KMGTP'.charAt(e)+'B';
+}
 
 const main = async () => {
     const nFS = new Filesystem('data.nfs', process.env.WEBHOOK)
@@ -48,6 +56,15 @@ const main = async () => {
             const [ nfsPath, targetPath ] = value.split(':')
             console.log(`Remote path: ${nfsPath}\nLocal path: ${targetPath}`)
             await downloadFile(nfsPath, targetPath)
+        } else if (key === '--ls' || key === '--readdir') {
+            const entries = await nFS.readdir(value)
+            console.log(entries.map(entry => {
+                if (entry.type === 'directory') {
+                    return `${(basename(entry.path) + '/').padEnd(32, ' ')} DIR `
+                } else {
+                    return `${basename(entry.path).padEnd(32, ' ')} FILE ${sizeOf(entry.size).padStart(8, ' ')}`
+                }
+            }).join('\n'))
         }
     }
 
