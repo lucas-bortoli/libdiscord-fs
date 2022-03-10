@@ -1,5 +1,5 @@
-import NanoFileSystem from './filesystem.js'
-import { File, Directory, Entry, NanoFileSystemHeaderKey } from './types.js'
+import Filesystem from './filesystem.js'
+import { File, Directory, Entry, FileSystemHeaderKey } from './types.js'
 
-export default NanoFileSystem
-export { File, Directory, Entry, NanoFileSystemHeaderKey }
+export default Filesystem
+export { File, Directory, Entry, FileSystemHeaderKey }

@@ -13,4 +13,4 @@ export interface Directory {
 
 export type Entry = File | Directory
 
-export type NanoFileSystemHeaderKey = 'Filesystem-Version' | 'Description' | 'Author'
+export type FileSystemHeaderKey = 'Filesystem-Version' | 'Description' | 'Author'

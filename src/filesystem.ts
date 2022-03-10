@@ -6,15 +6,15 @@ import { Duplex, Readable, Writable } from 'stream'
 import fetch from 'node-fetch'
 import Webhook from './upload.js'
 import Utils from './utils.js'
-import { NanoFileSystemHeaderKey, File, Directory, Entry } from './types.js'
+import { FileSystemHeaderKey, File, Directory, Entry } from './types.js'
 
 const BLOCK_SIZE: number = Math.floor(7.6 * 1024 * 1024)
 
-export default class NanoFileSystem {
+export default class Filesystem {
     private webhook: Webhook
     private cache: string[]
 
-    public header: Map<NanoFileSystemHeaderKey, string>
+    public header: Map<FileSystemHeaderKey, string>
     public dataFile: string
 
     constructor(dataFile: string, webhookUrl: string) {
@@ -52,7 +52,7 @@ export default class NanoFileSystem {
                 // Parse headers
                 const elements = line.split(':')
                 
-                const key = elements.shift().trim() as NanoFileSystemHeaderKey
+                const key = elements.shift().trim() as FileSystemHeaderKey
                 const value = elements.join(':').trim()
                 
                 this.header.set(key, value)
