@@ -37,6 +37,8 @@ Available commands:
             Lists the files in a given directory.
     --rm=PATH
             Deletes a file or an entire directory.
+    --mv=FROM:TO,     --rename=FROM:TO
+            Move/rename a file or directory.
 
 All local paths SHOULD be absolute.
 All remote paths MUST be absolute.
@@ -118,6 +120,9 @@ NanoFS (c) 2022 Lucas Bortoli`)
             affectedEntries.forEach(entry =>
                 console.log(`${basename(entry.path).padEnd(24, ' ')} FILE ${sizeOf(entry.size).padStart(8, ' ')}`
             ))
+        } else if (key === '--mv' || key === '--rename') {
+            const [ from, to ] = value.split(':')
+            await nFS.mv(from, to)
         } else {
             console.log('Unknown command')
         }

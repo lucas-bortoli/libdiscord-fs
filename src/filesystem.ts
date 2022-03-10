@@ -255,6 +255,26 @@ export default class NanoFileSystem {
         return directoryContents
     }
 
+    public async mv(from: string, to: string) {
+        // Remove trailing /
+        if (from.charAt(from.length - 1) === '/') from = from.slice(0, -1)
+        if (to.charAt(to.length - 1) === '/') to = to.slice(0, -1)
+
+        // Scan every entry in the filesystem
+        for (let i = 0; i < this.cache.length; i++) {
+            const line = this.cache[i]
+            const entry = this.parseFileEntry(line)
+            const entryname = entry.path
+
+            // Checks if entry is a child (or grandchild, etc.) of the given path
+            if ((entryname + '/').startsWith(from + '/')) {
+                entry.path = entry.path.replace(from, to)
+                console.log('moving', entryname, 'to', entry.path)
+                this.cache[i] = this.serializeFileEntry(entry)
+            }
+        }
+    }
+
     /**
      * Removes all matching files/directories from the index.
      * @param target Absolute path to directory/entry

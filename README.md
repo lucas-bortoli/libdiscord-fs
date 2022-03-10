@@ -20,6 +20,8 @@ Available commands:
             Lists the files in a given directory.
     --rm=PATH
             Deletes a file or an entire directory.
+    --mv=FROM:TO,     --rename=FROM:TO
+            Move/rename a file or directory.
 
 All local paths SHOULD be absolute.
 All remote paths MUST be absolute.
