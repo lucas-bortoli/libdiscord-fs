@@ -2,7 +2,8 @@ import * as fs from 'fs'
 import * as fsp from 'fs/promises'
 import * as path from 'path/posix'
 import * as readline from 'readline'
-import { Readable } from 'stream'
+import { Duplex, Readable } from 'stream'
+import fetch from 'node-fetch'
 import Webhook from './upload.js'
 import Utils from './utils.js'
 
@@ -98,16 +99,31 @@ export default class NanoFileSystem {
         await file.close()
     }
 
-    /*public async createReadStream(file: File): Promise<ReadableStream> {
-        const webhookUrl = this.header.get('Webhook-Url')
-        const stream = new Duplex()
+    public async getFileStream(file: File): Promise<Readable> {
+        const piecesUrl = 'https://cdn.discordapp.com/attachments/' + file.metaptr
+        const piecesBlob = await fetch(piecesUrl).then(r => r.arrayBuffer())
+        const pieces = new TextDecoder('utf-8').decode(piecesBlob).split(',')
 
-        const piecesUrl = this.header.get('Cdn-Base-Url') + file.piecesptr + '/pieces'
-        const filePieces: string[]
-        const pieces = await fetch(piecesUrl).then(r =>)
+        let pieceIndex = 0
+
+        const stream: Readable = new Readable({
+            async read() {
+                // End stream
+                if (pieceIndex >= pieces.length)
+                    this.push(null)
+
+                await Utils.Wait(100)
+
+                const chunkUrl = 'https://cdn.discordapp.com/attachments/' + pieces[pieceIndex]
+                const chunk = await fetch(chunkUrl).then(r => r.arrayBuffer())
+                stream.push(Buffer.from(chunk))
+
+                pieceIndex++
+            }
+        })
         
         return stream
-    }*/
+    }
 
     public writeFileFromStream(stream: Readable, filePath: string): Promise<File> {
         return new Promise(async resolve => {
