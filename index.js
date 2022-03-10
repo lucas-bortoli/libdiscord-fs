@@ -13,11 +13,17 @@ const main = async () => {
         return entry
     }
 
-    await uploadFile('index.js', '/dev/index.js')
+    for (const arg of process.argv.slice(2)) {
+        const [ key, value ] = arg.split('=')
+
+        if (key === '--file') {
+            const [ localPath, targetPath ] = value.split(':')
+            console.log(`Source file: ${localPath}\nTarget file: ${targetPath}`)
+            await uploadFile(localPath, targetPath)
+        }
+    }
 
     await nFS.writeDataFile()
-
-    console.log('end')
 }
 
 main()

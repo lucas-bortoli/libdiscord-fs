@@ -118,7 +118,11 @@ export default class NanoFileSystem {
             let creationTime = Date.now()
 
             // Callback called when the full file upload finishes.
+            let onUploadFinishCalled = false
             const onUploadFinish = async () => {
+                onUploadFinishCalled = true
+                console.log('readableEnded')
+
                 // Upload file pieces array to the CDN. It's a comma-separated string.
                 const metaPtr = await this.webhook.uploadFile('meta', Buffer.from(piecesPointers.join(',')))
 
@@ -141,9 +145,17 @@ export default class NanoFileSystem {
 
             // Make sure we're dealing with Buffer objects, and not strings.
             stream.setEncoding(null)
+            stream.pause()
+
+            let chunkUploadDone = true
 
             stream.on('readable', async () => {
+                // If previous chunk hasn't finished uploading yet, wait for it
+                // to be done before reading more data from the file stream.
+                while (!chunkUploadDone) await Utils.Wait(50)
+
                 let chunk: Buffer
+
                 while (null !== (chunk = stream.read(BLOCK_SIZE))) {
                     if (!Buffer.isBuffer(chunk))
                         chunk = Buffer.from(chunk)
@@ -155,12 +167,18 @@ export default class NanoFileSystem {
                     uploadedPieces++
 
                     // Upload chunk, retrying if it fails
+                    chunkUploadDone = false
+
+                    console.log('Starting upload of chunk.')
                     const piecePointer = await this.webhook.uploadFile('chunk', chunk)
+                    console.log('Chunk upload finish.')
 
                     piecesPointers.push(piecePointer.replace('https://cdn.discordapp.com/attachments/', ''))
 
-                    if (stream.readableEnded)
+                    if (stream.readableEnded && !onUploadFinishCalled)
                         onUploadFinish()
+
+                    chunkUploadDone = true
                 }
             })
         })
