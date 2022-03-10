@@ -10,6 +10,36 @@ const sizeOf = function (bytes) {
 }
 
 const main = async () => {
+    const args = process.argv.slice(2)
+
+    if (args.includes('--help') || args.includes('-h')) {
+        console.log(
+`NanoFS Command Line Interface
+
+Commands are given as command line arguments. For example:
+
+    $ node index.js --upload-file=/mnt/c/file.dat:/uploads/file.dat --ls=/uploads/
+
+    First, it uploads the local file /mnt/c/file.dat to /uploads/file.dat in the server.
+    Then, it lists the /uploads directory.
+
+Available commands:
+    --upload-file=LOCAL:REMOTE
+            Uploads a file to the server.
+    --download-file=LOCAL:REMOTE
+            Downloads a file from the server.
+    --ls=DIRECTORY,   --readdir=DIRECTORY
+            Lists the files in a given directory.
+    --rm=PATH
+            Deletes a file or an entire directory.
+
+All local paths SHOULD be absolute.
+All remote paths MUST be absolute.
+
+NanoFS (c) 2022 Lucas Bortoli`)
+        return
+    }
+
     const nFS = new Filesystem('data.nfs', process.env.WEBHOOK)
 
     await nFS.loadDataFile()
@@ -26,7 +56,7 @@ const main = async () => {
         })
     }
 
-    const downloadFile = (nfsPath, localPath) => {
+    const downloadFile = (localPath, nfsPath) => {
         return new Promise(async resolve => {
             const remoteStream = await nFS.createReadStream(nfsPath)
             const localStream = fs.createWriteStream(localPath)
@@ -48,24 +78,43 @@ const main = async () => {
     for (const arg of process.argv.slice(2)) {
         const [ key, value ] = arg.split('=')
 
+        console.log(key)
+
         if (key === '--upload-file') {
-            const [ localPath, targetPath ] = value.split(':')
-            console.log(`Source file: ${localPath}\nTarget file: ${targetPath}`)
-            await uploadFile(localPath, targetPath)
+            const [ localPath, nfsPath ] = value.split(':')
+
+            console.log(`local ${localPath} -> ${nfsPath} remote`)
+
+            await uploadFile(localPath, nfsPath)
         } else if (key === '--download-file') {
-            const [ nfsPath, targetPath ] = value.split(':')
-            console.log(`Remote path: ${nfsPath}\nLocal path: ${targetPath}`)
-            await downloadFile(nfsPath, targetPath)
+            const [ localPath, nfsPath ] = value.split(':')
+
+            console.log(`local ${nfsPath} <- ${nfsPath} remote`)
+
+            await downloadFile(localPath, nfsPath)
         } else if (key === '--ls' || key === '--readdir') {
             const entries = await nFS.readdir(value)
+
             console.log(entries.map(entry => {
                 if (entry.type === 'directory') {
-                    return `${(basename(entry.path) + '/').padEnd(32, ' ')} DIR `
+                    return `${(basename(entry.path) + '/').padEnd(24, ' ')} DIR `
                 } else {
-                    return `${basename(entry.path).padEnd(32, ' ')} FILE ${sizeOf(entry.size).padStart(8, ' ')}`
+                    return `${basename(entry.path).padEnd(24, ' ')} FILE ${sizeOf(entry.size).padStart(8, ' ')}`
                 }
             }).join('\n'))
+        } else if (key === '--rm') {
+            const affectedEntries = await nFS.rm(value)
+
+            console.log('affected:')
+
+            affectedEntries.forEach(entry =>
+                console.log(`${basename(entry.path).padEnd(24, ' ')} FILE ${sizeOf(entry.size).padStart(8, ' ')}`
+            ))
+        } else {
+            console.log('Unknown command')
         }
+
+        console.log('')
     }
 
     await nFS.writeDataFile()

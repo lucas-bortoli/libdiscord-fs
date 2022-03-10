@@ -210,7 +210,7 @@ export default class NanoFileSystem {
         if (targetPath.charAt(targetPath.length - 1) === '/')
             targetPath = targetPath.slice(0, -1)
 
-        for await (const line of this.cache) {
+        for (const line of this.cache) {
             const entry = this.parseFileEntry(line)
 
             if (entry.path === targetPath || entry.path.startsWith(targetPath + '/'))
@@ -229,7 +229,7 @@ export default class NanoFileSystem {
         const directoryContents: Entry[] = []
 
         // Scan every entry in the filesystem
-        for await (const line of this.cache) {
+        for (const line of this.cache) {
             const entry = this.parseFileEntry(line)
             const dirname = path.dirname(entry.path)
 
@@ -253,6 +253,37 @@ export default class NanoFileSystem {
         }
 
         return directoryContents
+    }
+
+    /**
+     * Removes all matching files/directories from the index.
+     * @param target Absolute path to directory/entry
+     * @returns an array containing the affected entries.
+     */
+    public async rm(target): Promise<Entry[]> {
+        // Remove trailing /
+        if (target.charAt(target.length - 1) === '/')
+            target = target.slice(0, -1)
+
+        const survivingEntries: string[] = []
+        const affectedEntries: Entry[] = []
+
+        // Scan every entry in the filesystem
+        for (const line of this.cache) {
+            const entry = this.parseFileEntry(line)
+            const entryname = entry.path
+
+            // Checks if entry is a child (or grandchild, etc.) of the given path
+            if (!(entryname + '/').startsWith(target + '/')) {
+                survivingEntries.push(line)
+            } else {
+                affectedEntries.push(entry)
+            }
+        }
+
+        this.cache = survivingEntries
+
+        return affectedEntries
     }
 
     private async addFileEntry(line: string): Promise<void> {
