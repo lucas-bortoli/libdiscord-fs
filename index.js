@@ -1,4 +1,4 @@
-import Filesystem from './dist/filesystem.js'
+import Filesystem from './lib/filesystem.js'
 import * as fs from 'fs'
 import { basename } from 'path/posix'
 
@@ -39,6 +39,8 @@ Available commands:
             Deletes a file or an entire directory.
     --mv=FROM:TO,     --rename=FROM:TO
             Move/rename a file or directory.
+    --exists=TARGET
+            Checks if a file or directory exists.
 
 All local paths SHOULD be absolute.
 All remote paths MUST be absolute.
@@ -123,6 +125,12 @@ NanoFS (c) 2022 Lucas Bortoli`)
         } else if (key === '--mv' || key === '--rename') {
             const [ from, to ] = value.split(':')
             await nFS.mv(from, to)
+        } else if (key === '--exists') {
+            if (await nFS.exists(value)) {
+                console.log('Exists')
+            } else {
+                console.log('Doesn\'t exist')
+            }
         } else {
             console.log('Unknown command')
         }
