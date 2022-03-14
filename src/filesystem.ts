@@ -92,6 +92,9 @@ export default class Filesystem {
     }
 
     public async createWriteStream(filePath: string): Promise<RemoteWriteStream> {
+        if (filePath.endsWith('/'))
+            filePath = filePath.slice(0, -1)
+            
         // Extend writable stream with our own properties
         const stream = new RemoteWriteStream(this.webhook)
 
@@ -138,7 +141,7 @@ export default class Filesystem {
         // Root always exists
         if (targetPath === '/')
             return true
-            
+
         // Remove trailing /
         if (targetPath.charAt(targetPath.length - 1) === '/')
             targetPath = targetPath.slice(0, -1)
@@ -202,7 +205,6 @@ export default class Filesystem {
             // Checks if entry is a child (or grandchild, etc.) of the given path
             if ((entryname + '/').startsWith(from + '/')) {
                 entry.path = entry.path.replace(from, to)
-                console.log('moving', entryname, 'to', entry.path)
                 this.cache[i] = this.serializeFileEntry(entry)
             }
         }
