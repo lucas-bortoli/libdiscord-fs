@@ -174,7 +174,11 @@ export default class Filesystem {
         })
     }
 
-    public async getFileEntry(filePath: string): Promise<File> {
+    /**
+     * Get the file entry. Returns null if the file doesn't exist.
+     * @param filePath Path to the file
+     */
+    public async getFileEntry(filePath: string): Promise<File|null> {
         // Remove trailing /
         if (filePath.charAt(filePath.length - 1) === '/')
             filePath = filePath.slice(0, -1)
@@ -186,7 +190,7 @@ export default class Filesystem {
                 return entry
         }
 
-        throw new Error('File doesn\'t exist')
+        return null
     }
 
     public async exists(targetPath: string): Promise<boolean> {
