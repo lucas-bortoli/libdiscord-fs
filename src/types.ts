@@ -1,3 +1,5 @@
+import { Readable, Writable } from 'stream'
+
 export interface File {
     type: 'file',
     path: string,

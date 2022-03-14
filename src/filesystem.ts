@@ -2,13 +2,12 @@ import * as fs from 'fs'
 import * as fsp from 'fs/promises'
 import * as path from 'path/posix'
 import * as readline from 'readline'
-import { Duplex, Readable, Writable } from 'stream'
+import { Readable, Writable } from 'stream'
 import fetch from 'node-fetch'
 import Webhook from './upload.js'
 import Utils from './utils.js'
 import { FileSystemHeaderKey, File, Directory, Entry } from './types.js'
-
-const BLOCK_SIZE: number = Math.floor(7.6 * 1024 * 1024)
+import { RemoteReadStream, RemoteWriteStream } from './streams.js'
 
 export default class Filesystem {
     private webhook: Webhook
@@ -80,98 +79,40 @@ export default class Filesystem {
         await file.close()
     }
 
-    public async createReadStream(filePath: string): Promise<Readable> {
+    public async createReadStream(filePath: string): Promise<RemoteReadStream> {
         const file = await this.getFileEntry(filePath)
 
         const piecesUrl = 'https://cdn.discordapp.com/attachments/' + file.metaptr
         const piecesBlob = await fetch(piecesUrl).then(r => r.arrayBuffer())
         const pieces = new TextDecoder('utf-8').decode(piecesBlob).split(',')
 
-        let pieceIndex = 0
-
-        const stream: Readable = new Readable({
-            async read() {
-                // End stream
-                if (pieceIndex >= pieces.length)
-                    this.push(null)
-
-                const chunkUrl = 'https://cdn.discordapp.com/attachments/' + pieces[pieceIndex]
-                const chunk = await fetch(chunkUrl).then(r => r.arrayBuffer())
-                stream.push(Buffer.from(chunk))
-
-                pieceIndex++
-            }
-        })
+        const stream = new RemoteReadStream(pieces)
         
         return stream
     }
 
-    public async createWriteStream(filePath: string): Promise<Writable> {
-        let queue: Buffer[] = []
-        let that = this
+    public async createWriteStream(filePath: string): Promise<RemoteWriteStream> {
+        // Extend writable stream with our own properties
+        const stream = new RemoteWriteStream(this.webhook)
 
-        let fileSize = 0
-        let creationTime = Date.now()
-        let piecesPointers: string[] = []
-
-        /**
-         * Flushes (uploads) a block of data to the webhook.
-         */
-        const flush = async (chunk: Buffer) => {
-            if (chunk.length > BLOCK_SIZE)
-                console.warn(`Chunk length (${chunk.length} bytes) is bigger than maximum block size (${BLOCK_SIZE} bytes)!`)
-
-            const piecePointer = await that.webhook.uploadFile('chunk', chunk)
-            piecesPointers.push(piecePointer.replace('https://cdn.discordapp.com/attachments/', ''))
-            fileSize += chunk.length
-        }
-
-        return new Writable({
-            decodeStrings: false,
-            async write(chunk: Buffer, encoding, cb) {
-                if (!Buffer.isBuffer(chunk))
-                    return cb(new TypeError('Provided chunk isn\'t a Buffer! Make sure to not specify any encoding on the stream piped to Filesystem#createWriteStream.'))
-
-                // If adding this buffer to the queue would exceed the block size, then it's time to
-                // upload all queued chunks.
-                // If not, add it to the queue.
-                if (queue.map(b => b.length).reduce((a,b) => a+b, 0) + chunk.length >= BLOCK_SIZE) {
-                    const buffer = Buffer.concat(queue)
-                    await flush(buffer)
-                    queue = [ chunk ]
-                } else {
-                    queue.push(chunk)
-                }
-
-                cb()
-            },
-
-            // Called before stream closes, used to write any remaining buffered data.
-            async final(cb) {
-                // Flush remaining data in queue
-                const buffer = Buffer.concat(queue)
-                await flush(buffer)
-
-                // Upload file pieces array to the CDN. It's a comma-separated string.
-                const metaPtr = await that.webhook.uploadFile('meta', Buffer.from(piecesPointers.join(',')))
-
-                // Create file entry
-                const fileEntry: File = {
-                    type: 'file',
-                    path: filePath,
-                    size: fileSize,
-                    ctime: creationTime,
-                    metaptr: metaPtr.replace('https://cdn.discordapp.com/attachments/', '')
-                }
-
-                // Write it into the database
-                const entryAsString: string = that.serializeFileEntry(fileEntry)
-                await that.addFileEntry(entryAsString)
-
-                // End stream
-                cb()
+        stream.once('allUploadsDone', async (endStream) => {
+            // Create file entry
+            const fileEntry: File = {
+                type: 'file',
+                path: filePath,
+                size: stream.writtenBytes,
+                ctime: Date.now(),
+                metaptr: stream.metaPtr.replace('https://cdn.discordapp.com/attachments/', '')
             }
+
+            // Write it into the database
+            const entryAsString: string = this.serializeFileEntry(fileEntry)
+            await this.addFileEntry(entryAsString)
+
+            endStream()
         })
+
+        return stream
     }
 
     /**
