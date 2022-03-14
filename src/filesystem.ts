@@ -135,6 +135,10 @@ export default class Filesystem {
     }
 
     public async exists(targetPath: string): Promise<boolean> {
+        // Root always exists
+        if (targetPath === '/')
+            return true
+            
         // Remove trailing /
         if (targetPath.charAt(targetPath.length - 1) === '/')
             targetPath = targetPath.slice(0, -1)
