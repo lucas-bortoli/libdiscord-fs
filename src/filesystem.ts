@@ -163,6 +163,14 @@ export default class Filesystem {
         this.setEntry(toPath, fromEntry)
     }
 
+    public cp(fromPath: string, toPath: string) {
+        if (toPath.endsWith('/'))
+            toPath += path.basename(fromPath)
+
+        const fromEntry = JSON.parse(JSON.stringify(this.getEntry(fromPath)))
+        this.setEntry(toPath, fromEntry)
+    }
+
     /**
      * Removes all matching files/directories from the index.
      * @param target Absolute path to directory/entry
