@@ -147,7 +147,7 @@ export default class Filesystem {
             lastDir = lastDir.items[segment] as Directory
         }
 
-        return null
+        return lastDir
     }
 
     public exists(path: string) {
@@ -155,9 +155,8 @@ export default class Filesystem {
     }
 
     public mv(fromPath: string, toPath: string) {
-        if (toPath.endsWith('/') && !fromPath.endsWith('/')) {
+        if (toPath.endsWith('/'))
             toPath += path.basename(fromPath)
-        }
 
         const fromEntry = this.getEntry(fromPath)
         this.rm(fromPath)
