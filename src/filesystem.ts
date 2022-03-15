@@ -2,24 +2,24 @@ import * as fs from 'fs'
 import * as fsp from 'fs/promises'
 import * as path from 'path/posix'
 import * as readline from 'readline'
-import { Readable, Writable } from 'stream'
 import fetch from 'node-fetch'
 import Webhook from './upload.js'
 import Utils from './utils.js'
-import { FileSystemHeaderKey, File, Directory, Entry } from './types.js'
+import { FileSystemHeaderKey, File, Directory, Entry, WalkDirectoryAsyncCallback } from './types.js'
 import { RemoteReadStream, RemoteWriteStream } from './streams.js'
 
 export default class Filesystem {
     private webhook: Webhook
-    private cache: string[]
-
+    
     public header: Map<FileSystemHeaderKey, string>
     public dataFile: string
+
+    private root: Directory
 
     constructor(dataFile: string, webhookUrl: string) {
         this.dataFile = dataFile
         this.header = new Map()
-        this.cache = []
+        this.root = { type: 'directory', items: {} }
         this.webhook = new Webhook(webhookUrl)
 
         // Default properties; can be overriden by the data file
@@ -41,6 +41,8 @@ export default class Filesystem {
     
         let alreadyReadHeaders = false
     
+        this.root = { type: 'directory', items: {} }
+
         for await (const line of rl) {
             if (line.length === 0) {
                 alreadyReadHeaders = true
@@ -56,8 +58,8 @@ export default class Filesystem {
                 
                 this.header.set(key, value)
             } else {
-                // Add file entry to cache
-                this.cache.push(line)
+                const parsed = this.parseFileEntry(line)
+                this.setEntry(parsed.path, parsed.file)
             }
         }
     }
@@ -73,14 +75,20 @@ export default class Filesystem {
         file.write(Buffer.from('\n', 'utf-8'))
 
         // Write file entries
-        for (const line of this.cache)
-            file.write(Buffer.from(line + '\n', 'utf-8'))
+        this.walkDirectory(this.root, async (fileEntry: File, filePath: string) => {
+            const asString = this.serializeFileEntry(fileEntry, filePath)
+
+            file.writeFile(Buffer.from(asString + '\n', 'utf-8'))
+        })
 
         await file.close()
     }
 
     public async createReadStream(filePath: string): Promise<RemoteReadStream> {
-        const file = await this.getFileEntry(filePath)
+        const file = await this.getEntry(filePath)
+
+        if (!file || file.type !== 'file')
+            throw new TypeError('createReadStream: ' + filePath + ' not found or isn\'t a file.')
 
         const piecesUrl = 'https://cdn.discordapp.com/attachments/' + file.metaptr
         const piecesBlob = await fetch(piecesUrl).then(r => r.arrayBuffer())
@@ -102,15 +110,13 @@ export default class Filesystem {
             // Create file entry
             const fileEntry: File = {
                 type: 'file',
-                path: filePath,
                 size: stream.writtenBytes,
                 ctime: Date.now(),
                 metaptr: stream.metaPtr.replace('https://cdn.discordapp.com/attachments/', '')
             }
 
             // Write it into the database
-            const entryAsString: string = this.serializeFileEntry(fileEntry)
-            await this.addFileEntry(entryAsString)
+            await this.setEntry(filePath, fileEntry)
 
             endStream()
         })
@@ -119,152 +125,113 @@ export default class Filesystem {
     }
 
     /**
-     * Get the file entry. Returns null if the file doesn't exist.
+     * Gets an entry. Returns null if the entry doesn't exist.
      * @param filePath Path to the file
      */
-    public async getFileEntry(filePath: string): Promise<File|null> {
-        // Remove trailing /
-        if (filePath.charAt(filePath.length - 1) === '/')
-            filePath = filePath.slice(0, -1)
+    public getEntry(filePath: string): Entry|null {
+        const pathSegments = filePath.split('/').filter(l => l.length)
 
-        for (const line of this.cache) {
-            const entry = this.parseFileEntry(line)
+        let lastDir: Directory = this.root
 
-            if (entry.path === filePath) 
-                return entry
+        for (let i = 0; i < pathSegments.length; i++) {
+            const segment = pathSegments[i]
+            const isLastSegment = i === pathSegments.length - 1
+
+            // Directory or file not found
+            if (!lastDir.items[segment])
+                return null
+
+            if (isLastSegment)
+                return lastDir.items[segment]
+
+            lastDir = lastDir.items[segment] as Directory
         }
 
         return null
     }
 
-    public async exists(targetPath: string): Promise<boolean> {
-        // Root always exists
-        if (targetPath === '/')
-            return true
-
-        // Remove trailing /
-        if (targetPath.charAt(targetPath.length - 1) === '/')
-            targetPath = targetPath.slice(0, -1)
-
-        for (const line of this.cache) {
-            const entry = this.parseFileEntry(line)
-
-            if (entry.path === targetPath || entry.path.startsWith(targetPath + '/'))
-                return true
-        }
-
-        return false
+    public exists(path: string) {
+        return !!this.getEntry(path)
     }
 
-    public async readdir(targetDir): Promise<Entry[]> {
-        // Remove trailing /
-        if (targetDir.charAt(targetDir.length - 1) === '/')
-            targetDir = targetDir.slice(0, -1)
-
-        const subdirs: string[] = []
-        const directoryContents: Entry[] = []
-
-        // Scan every entry in the filesystem
-        for (const line of this.cache) {
-            const entry = this.parseFileEntry(line)
-            const dirname = path.dirname(entry.path)
-
-            // Checks if entry is a child (or grandchild, etc.) of the given path
-            if (dirname.startsWith(targetDir)) {
-                const nextDelimiterIndex = entry.path.indexOf('/', targetDir.length + 1)
-
-                // Check if entry is a direct child of the given path (isn't in a subdirectory)
-                if (nextDelimiterIndex < 0) {
-                    directoryContents.push(entry)
-                } else {
-                    // The entry isn't a direct child, so we find its nearest parent in the given directory
-                    const subdirPath = entry.path.slice(0, nextDelimiterIndex)
-
-                    if (!subdirs.includes(subdirPath)) {
-                        subdirs.push(subdirPath)
-                        directoryContents.push({ type: 'directory', path: subdirPath })
-                    }
-                }
-            }
+    public mv(fromPath: string, toPath: string) {
+        if (toPath.endsWith('/') && !fromPath.endsWith('/')) {
+            toPath += path.basename(fromPath)
         }
 
-        return directoryContents
-    }
-
-    public async mv(from: string, to: string) {
-        // Remove trailing /
-        if (from.charAt(from.length - 1) === '/') from = from.slice(0, -1)
-        if (to.charAt(to.length - 1) === '/') to = to.slice(0, -1)
-
-        // Scan every entry in the filesystem
-        for (let i = 0; i < this.cache.length; i++) {
-            const line = this.cache[i]
-            const entry = this.parseFileEntry(line)
-            const entryname = entry.path
-
-            // Checks if entry is a child (or grandchild, etc.) of the given path
-            if ((entryname + '/').startsWith(from + '/')) {
-                entry.path = entry.path.replace(from, to)
-                this.cache[i] = this.serializeFileEntry(entry)
-            }
-        }
+        const fromEntry = this.getEntry(fromPath)
+        this.rm(fromPath)
+        this.setEntry(toPath, fromEntry)
     }
 
     /**
      * Removes all matching files/directories from the index.
      * @param target Absolute path to directory/entry
-     * @returns an array containing the affected entries.
      */
-    public async rm(target): Promise<Entry[]> {
-        // Remove trailing /
-        if (target.charAt(target.length - 1) === '/')
-            target = target.slice(0, -1)
+    public rm(target: string) {
+        const pathSegments = target.split('/').filter(l => l.length)
 
-        const survivingEntries: string[] = []
-        const affectedEntries: Entry[] = []
+        let lastDir: Directory = this.root
 
-        // Scan every entry in the filesystem
-        for (const line of this.cache) {
-            const entry = this.parseFileEntry(line)
-            const entryname = entry.path
+        for (let i = 0; i < pathSegments.length; i++) {
+            const segment = pathSegments[i]
+            const isLastSegment = i === pathSegments.length - 1
 
-            // Checks if entry is a child (or grandchild, etc.) of the given path
-            if (!(entryname + '/').startsWith(target + '/')) {
-                survivingEntries.push(line)
+            // Is the last segment in path?
+            if (isLastSegment) {
+                delete lastDir.items[segment]
             } else {
-                affectedEntries.push(entry)
+                // Path doesn't exist
+                if (!lastDir.items[segment])
+                    throw new Error('rm: Path doesn\'t exist: ' + target)
+
+                lastDir = lastDir.items[segment] as Directory
             }
         }
-
-        this.cache = survivingEntries
-
-        return affectedEntries
     }
 
-    private async addFileEntry(line: string): Promise<void> {
-        const newEntryPath = line.slice(0, line.indexOf(':'))
+    public setEntry(path: string, entry: Entry) {
+        const pathSegments = path.split('/').filter(l => l.length)
 
-        // If entry already exists, replace it
-        for (let i = 0; i < this.cache.length; i++) {
-            const oldEntryPath = this.cache[i].slice(0, this.cache[i].indexOf(':'))
-            if (newEntryPath === oldEntryPath) {
-                this.cache[i] = line
-                return
+        let lastDir: Directory = this.root
+
+        for (let i = 0; i < pathSegments.length; i++) {
+            const segment = pathSegments[i]
+            const isLastSegment = i === pathSegments.length - 1
+
+            // Is file basename?
+            if (isLastSegment) {
+                lastDir.items[segment] = entry
+            } else {
+                // Is directory
+                if (!lastDir.items[segment])
+                    lastDir.items[segment] = { type: 'directory', items: {} }
+
+                lastDir = lastDir.items[segment] as Directory
             }
         }
-
-        // If we're here, then it's a new entry. Add it to the cache
-        this.cache.push(line)
-
-        return
     }
 
-    private serializeFileEntry(file: File): string {
-        return [ file.path, file.size.toString(), file.ctime.toString(), file.metaptr ].join(':')
+    /**
+     * Walk a directory.
+     * @param cb Callback called for each file in every subdirectory.
+     */
+    public async walkDirectory(root: Directory, cb: WalkDirectoryAsyncCallback, _prevPath: string = '/') {
+        for (const [ name, entry ] of Object.entries(root.items)) {
+            if (entry.type === 'directory') {
+                this.walkDirectory(entry, cb, path.join(_prevPath, name))
+            } else {
+                await cb(entry, path.join(_prevPath, name))
+            }
+        }
     }
 
-    private parseFileEntry(line: string): File {
+    private serializeFileEntry(file: File, path: string): string {
+        return [ path, file.size.toString(), file.ctime.toString(), file.metaptr ].join(':')
+    }
+
+    private parseFileEntry(line: string): { path: string, file: File } {
         const elements = line.split(':') 
-        return { type: 'file', path: elements[0], size: parseInt(elements[1]), ctime: parseInt(elements[2]), metaptr: elements[3] }
+        return { path: elements[0], file: { type: 'file', size: parseInt(elements[1]), ctime: parseInt(elements[2]), metaptr: elements[3] } }
     }
 }

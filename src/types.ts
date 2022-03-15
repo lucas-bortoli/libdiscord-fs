@@ -2,7 +2,6 @@ import { Readable, Writable } from 'stream'
 
 export interface File {
     type: 'file',
-    path: string,
     size: number,
     ctime: number,
     metaptr: string
@@ -10,9 +9,13 @@ export interface File {
 
 export interface Directory {
     type: 'directory',
-    path: string
+    items: {
+        [key: string]: Entry
+    }
 }
 
 export type Entry = File | Directory
 
 export type FileSystemHeaderKey = 'Filesystem-Version' | 'Description' | 'Author'
+
+export type WalkDirectoryAsyncCallback = (file: File, path: string) => Promise<void>
