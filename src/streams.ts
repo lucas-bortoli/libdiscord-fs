@@ -95,7 +95,18 @@ export class RemoteReadStream extends Readable {
             this.push(null)
 
         const chunkUrl = 'https://cdn.discordapp.com/attachments/' + this.pieces[this.pieceIndex]
-        const chunk = await Utils.fetchBlob(chunkUrl)
+        let chunk: Buffer
+        
+        do {
+            try {
+                chunk = await Utils.fetchBlob(chunkUrl)
+            } catch(error) {
+                console.error(`Error downloading chunk i=${this.pieceIndex} (${this.pieces[this.pieceIndex]}). Trying again...`)
+                console.error(error)
+                await Utils.Wait(5000)
+            }
+        } while (!chunk)
+        
         const asBuffer = Buffer.from(chunk)
 
         this.push(asBuffer)
