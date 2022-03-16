@@ -2,11 +2,11 @@ import * as fs from 'fs'
 import * as fsp from 'fs/promises'
 import * as path from 'path/posix'
 import * as readline from 'readline'
-import fetch from 'node-fetch'
-import Webhook from './upload.js'
+import Webhook from './webhook.js'
 import Utils from './utils.js'
 import { FileSystemHeaderKey, File, Directory, Entry, WalkDirectoryAsyncCallback } from './types.js'
 import { RemoteReadStream, RemoteWriteStream } from './streams.js'
+import { TextDecoder } from 'util'
 
 export default class Filesystem {
     private webhook: Webhook
@@ -91,7 +91,7 @@ export default class Filesystem {
             throw new TypeError('createReadStream: ' + filePath + ' not found or isn\'t a file.')
 
         const piecesUrl = 'https://cdn.discordapp.com/attachments/' + file.metaptr
-        const piecesBlob = await fetch(piecesUrl).then(r => r.arrayBuffer())
+        const piecesBlob = await Utils.fetchBlob(piecesUrl)
         const pieces = new TextDecoder('utf-8').decode(piecesBlob).split(',')
 
         const stream = new RemoteReadStream(pieces)

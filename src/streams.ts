@@ -1,6 +1,6 @@
 import { Readable, Writable } from 'stream'
-import Webhook from './upload.js'
-import fetch from 'node-fetch'
+import Utils from './utils.js'
+import Webhook from './webhook.js'
 
 const BLOCK_SIZE: number = Math.floor(7.6 * 1024 * 1024)
 
@@ -90,7 +90,7 @@ export class RemoteReadStream extends Readable {
             this.push(null)
 
         const chunkUrl = 'https://cdn.discordapp.com/attachments/' + this.pieces[this.pieceIndex]
-        const chunk = await fetch(chunkUrl).then(r => r.arrayBuffer())
+        const chunk = await Utils.fetchBlob(chunkUrl)
         const asBuffer = Buffer.from(chunk)
 
         this.push(asBuffer)
