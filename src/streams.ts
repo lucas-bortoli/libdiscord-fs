@@ -34,6 +34,7 @@ export class RemoteWriteStream extends Writable {
         const piecePointer = await this.webhook.uploadFile('chunk', chunk)
         this.piecePointers.push(piecePointer.replace('https://cdn.discordapp.com/attachments/', ''))
         this.uploadedBytes += chunk.length
+        chunk = null
     }
 
     async _write(chunk: Buffer, encoding, cb) {
@@ -46,9 +47,10 @@ export class RemoteWriteStream extends Writable {
         // upload all queued chunks.
         // If not, add it to the queue.
         if (this.queue.map(b => b.length).reduce((a,b) => a+b, 0) + chunk.length >= BLOCK_SIZE) {
-            const buffer = Buffer.concat(this.queue)
+            let buffer = Buffer.concat(this.queue)
             await this.flush(buffer)
             this.queue = [ chunk ]
+            buffer = null
         } else {
             this.queue.push(chunk)
         }
@@ -59,8 +61,11 @@ export class RemoteWriteStream extends Writable {
     // Called before stream closes, used to write any remaining buffered data.
     async _final(cb) {
         // Flush remaining data in queue
-        const buffer = Buffer.concat(this.queue)
+        let buffer = Buffer.concat(this.queue)
         await this.flush(buffer)
+
+        buffer = null
+        this.queue = []
 
         // Upload file pieces array to the CDN. It's a comma-separated string.
         this.metaPtr = await this.webhook.uploadFile('meta', Buffer.from(this.piecePointers.join(',')))

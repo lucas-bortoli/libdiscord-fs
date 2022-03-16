@@ -26,7 +26,7 @@ export default class Webhook {
             try {
                 const body = await new Promise<Buffer>((resolve, reject) => {
                     const url = new URL(this.webhookUrl + '?wait=true')
-                    const form = new FormData()
+                    let form = new FormData()
         
                     form.append('payload_json', JSON.stringify({
                         files: [
@@ -50,11 +50,18 @@ export default class Webhook {
 
                         res.on('error', err => {
                             data = null
+                            form.destroy()
+                            form = null
+                            data = null
                             reject(err)
                         })
 
                         res.once('end', () => {
                             resolve(Buffer.concat(data))
+                            data = null
+                            form.destroy()
+                            form = null
+                            data = null
                         })
                     })
             
