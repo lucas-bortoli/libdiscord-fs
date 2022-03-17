@@ -64,7 +64,7 @@ export default class Filesystem {
         writable.write(Buffer.from('\n', 'utf-8'))
 
         // Write file entries
-        this.walkDirectory(this.root, async (fileEntry: File, filePath: string) => {
+        await this.walkDirectory(this.root, async (fileEntry: File, filePath: string) => {
             const asString = Utils.serializeFileEntry(fileEntry, filePath)
 
             writable.write(Buffer.from(asString + '\n', 'utf-8'))
