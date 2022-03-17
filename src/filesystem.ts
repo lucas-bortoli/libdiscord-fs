@@ -7,17 +7,14 @@ import Utils from './utils.js'
 import { FileSystemHeaderKey, File, Directory, Entry, WalkDirectoryAsyncCallback } from './types.js'
 import { RemoteReadStream, RemoteWriteStream } from './streams.js'
 import { TextDecoder } from 'util'
+import { Readable, Writable } from 'stream'
 
 export default class Filesystem {
     private webhook: Webhook
-    
     public header: Map<FileSystemHeaderKey, string>
-    public dataFile: string
+    public root: Directory
 
-    private root: Directory
-
-    constructor(dataFile: string, webhookUrl: string) {
-        this.dataFile = dataFile
+    constructor(webhookUrl: string) {
         this.header = new Map()
         this.root = { type: 'directory', items: {} }
         this.webhook = new Webhook(webhookUrl)
@@ -28,12 +25,7 @@ export default class Filesystem {
         this.header.set('Author', process.env.USER || 'null')
     }
 
-    public async loadDataFile() {
-        // Noop if file doesn't exist
-        if (!await Utils.fsp_fileExists(this.dataFile))
-            return
-
-        const stream = fs.createReadStream(this.dataFile)
+    public async loadDataFromStream(stream: Readable) {
         const rl = readline.createInterface({
             input: stream,
             crlfDelay: Infinity
@@ -58,30 +50,27 @@ export default class Filesystem {
                 
                 this.header.set(key, value)
             } else {
-                const parsed = this.parseFileEntry(line)
+                const parsed = Utils.parseFileEntry(line)
                 this.setEntry(parsed.path, parsed.file)
             }
         }
     }
 
-    public async writeDataFile() {
-        // Create, or replace, data file
-        const file = await fsp.open(this.dataFile, 'w+')
-
+    public async writeDataToStream(writable: Writable) {
         // Write header entries
         for (const [ key, value ] of this.header)
-            file.write(Buffer.from(`${key}: ${value}\n`, 'utf-8'))
+            writable.write(Buffer.from(`${key}: ${value}\n`, 'utf-8'))
         
-        file.write(Buffer.from('\n', 'utf-8'))
+        writable.write(Buffer.from('\n', 'utf-8'))
 
         // Write file entries
         this.walkDirectory(this.root, async (fileEntry: File, filePath: string) => {
-            const asString = this.serializeFileEntry(fileEntry, filePath)
+            const asString = Utils.serializeFileEntry(fileEntry, filePath)
 
-            file.writeFile(Buffer.from(asString + '\n', 'utf-8'))
+            writable.write(Buffer.from(asString + '\n', 'utf-8'))
         })
 
-        await file.close()
+        writable.end()
     }
 
     public async createReadStream(filePath: string): Promise<RemoteReadStream> {
@@ -250,14 +239,5 @@ export default class Filesystem {
                 await cb(entry, path.join(_prevPath, name))
             }
         }
-    }
-
-    private serializeFileEntry(file: File, path: string): string {
-        return [ path, file.size.toString(), file.ctime.toString(), file.metaptr ].join(':')
-    }
-
-    private parseFileEntry(line: string): { path: string, file: File } {
-        const elements = line.split(':') 
-        return { path: elements[0], file: { type: 'file', size: parseInt(elements[1]), ctime: parseInt(elements[2]), metaptr: elements[3] } }
     }
 }
