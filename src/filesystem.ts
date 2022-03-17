@@ -150,19 +150,34 @@ export default class Filesystem {
         return lastDir
     }
 
+    /**
+     * Checks wether a file or directory exists in a given path.
+     * @param path 
+     * @returns 
+     */
     public exists(path: string) {
         return !!this.getEntry(path)
     }
 
-    public mv(fromPath: string, toPath: string) {
-        if (toPath.endsWith('/'))
-            toPath += path.basename(fromPath)
+    /**
+     * Moves a file or directory to a new location.
+     * If the 'to' argument is a directory, the new entry will be created
+     * in that directory with the same name it had before.
+     */
+    public mv(from: string, to: string) {
+        if (to.endsWith('/'))
+            to += path.basename(from)
 
-        const fromEntry = this.getEntry(fromPath)
-        this.rm(fromPath)
-        this.setEntry(toPath, fromEntry)
+        const fromEntry = this.getEntry(from)
+        this.rm(from)
+        this.setEntry(to, fromEntry)
     }
 
+    /**
+     * Copies a file or directory to a new location.
+     * If the 'to' argument is a directory, the new entry will be created
+     * in that directory with the same name it had before.
+     */
     public cp(fromPath: string, toPath: string) {
         if (toPath.endsWith('/'))
             toPath += path.basename(fromPath)
@@ -197,7 +212,11 @@ export default class Filesystem {
         }
     }
 
-    public setEntry(path: string, entry: Entry) {
+    /**
+     * Sets an entry at the given path. Used internally in the createWriteStream
+     * function, and when the filesystem is loaded.
+     */
+    private setEntry(path: string, entry: Entry) {
         const pathSegments = path.split('/').filter(l => l.length)
 
         let lastDir: Directory = this.root

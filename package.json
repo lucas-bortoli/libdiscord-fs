@@ -1,7 +1,7 @@
 {
     "name": "@lucas-bortoli/libdiscord-fs",
     "type": "module",
-    "version": "2.3.1",
+    "version": "2.3.2",
     "main": "lib/index.js",
     "files": [
         "lib/**/*"
