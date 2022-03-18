@@ -8,7 +8,7 @@ import { TextDecoder } from 'util'
 import { Readable, Writable } from 'stream'
 
 export default class Filesystem {
-    private webhook: Webhook
+    public webhook: Webhook
     public header: Map<FileSystemHeaderKey, string>
     public root: Directory
 
