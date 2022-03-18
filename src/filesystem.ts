@@ -1,5 +1,3 @@
-import * as fs from 'fs'
-import * as fsp from 'fs/promises'
 import * as path from 'path/posix'
 import * as readline from 'readline'
 import Webhook from './webhook.js'
