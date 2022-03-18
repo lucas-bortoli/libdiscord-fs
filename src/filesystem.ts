@@ -234,7 +234,7 @@ export default class Filesystem {
     public async walkDirectory(root: Directory, cb: WalkDirectoryAsyncCallback, _prevPath: string = '/') {
         for (const [ name, entry ] of Object.entries(root.items)) {
             if (entry.type === 'directory') {
-                this.walkDirectory(entry, cb, path.join(_prevPath, name))
+                await this.walkDirectory(entry, cb, path.join(_prevPath, name))
             } else {
                 await cb(entry, path.join(_prevPath, name))
             }
