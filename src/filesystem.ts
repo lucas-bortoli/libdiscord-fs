@@ -88,7 +88,7 @@ export default class Filesystem {
         return stream
     }
 
-    public async createWriteStream(filePath: string): Promise<RemoteWriteStream> {
+    public async createWriteStream(filePath: string, createEntry: boolean = true): Promise<RemoteWriteStream> {
         if (filePath.endsWith('/'))
             filePath = filePath.slice(0, -1)
             
@@ -105,7 +105,8 @@ export default class Filesystem {
             }
 
             // Write it into the database
-            await this.setEntry(filePath, fileEntry)
+            if (createEntry)
+                await this.setEntry(filePath, fileEntry)
 
             endStream()
         })
