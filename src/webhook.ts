@@ -4,7 +4,7 @@ import FormData from 'form-data'
 import Utils from './utils.js'
 
 export default class Webhook {
-    private webhookUrl: string
+    public webhookUrl: string
 
     /**
      * @param webhookUrl The webhook where data will be sent to.
