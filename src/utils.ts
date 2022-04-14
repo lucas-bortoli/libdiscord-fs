@@ -46,11 +46,22 @@ export default class Utils {
     }
 
     public static serializeFileEntry(file: File, path: string): string {
-        return [ path, file.size.toString(), file.ctime.toString(), file.metaptr ].join(':')
+        let comment = file.comment || ''
+        comment = comment.replaceAll(':', 'ː')
+        return [ path, file.size.toString(), file.ctime.toString(), file.metaptr, file.comment || '' ].join(':')
     }
 
     public static parseFileEntry(line: string): { path: string, file: File } {
-        const elements = line.split(':') 
-        return { path: elements[0], file: { type: 'file', size: parseInt(elements[1]), ctime: parseInt(elements[2]), metaptr: elements[3] } }
+        const elements = line.split(':')
+
+        const fileEntry: File = { 
+            type: 'file', 
+            size: parseInt(elements[1]), 
+            ctime: parseInt(elements[2]), 
+            metaptr: elements[3],
+            comment: elements[4] ? elements[4] : ''
+        }
+
+        return { path: elements[0], file: fileEntry }
     }
 }

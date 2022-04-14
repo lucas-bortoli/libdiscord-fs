@@ -4,7 +4,8 @@ export interface File {
     type: 'file',
     size: number,
     ctime: number,
-    metaptr: string
+    metaptr: string,
+    comment?: string
 }
 
 export interface Directory {
