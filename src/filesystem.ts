@@ -86,7 +86,15 @@ export default class Filesystem {
         return stream
     }
 
-    public async createWriteStream(filePath: string, createEntry: boolean = true): Promise<RemoteWriteStream> {
+    /**
+     * Creates a remote write stream. If `createEntry == true` (default), the
+     * resulting file entry is added to the filesystem. If not, the file is
+     * uploaded, but it is not added to the filesystem tree.
+     * @param filePath Where the file entry will be stored.
+     * @param createEntry 
+     * @param customEntryProperties Optional overrides for the filesystem entry
+     */
+    public async createWriteStream(filePath: string, createEntry: boolean = true, customEntryProperties: Partial<File> = {}): Promise<RemoteWriteStream> {
         if (filePath.endsWith('/'))
             filePath = filePath.slice(0, -1)
             
@@ -95,12 +103,12 @@ export default class Filesystem {
 
         stream.once('allUploadsDone', async (endStream) => {
             // Create file entry
-            const fileEntry: File = {
+            const fileEntry: File = Object.assign({}, {
                 type: 'file',
                 size: stream.writtenBytes,
                 ctime: Date.now(),
                 metaptr: stream.metaPtr.replace('https://cdn.discordapp.com/attachments/', '')
-            }
+            }, customEntryProperties)
 
             // Write it into the database
             if (createEntry)
