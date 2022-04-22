@@ -17,6 +17,6 @@ export interface Directory {
 
 export type Entry = File | Directory
 
-export type FileSystemHeaderKey = 'Filesystem-Version' | 'Description' | 'Author' | string
+export type FileSystemHeaderKey = 'Filesystem-Version' | 'Description' | 'Author' | 'Uses-Encryption' | 'Encryption-InitializationVector' | string
 
 export type WalkDirectoryAsyncCallback = (file: File, path: string) => Promise<void>

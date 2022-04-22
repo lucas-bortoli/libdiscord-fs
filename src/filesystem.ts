@@ -6,21 +6,34 @@ import { FileSystemHeaderKey, File, Directory, Entry, WalkDirectoryAsyncCallback
 import { RemoteReadStream, RemoteWriteStream } from './streams.js'
 import { TextDecoder } from 'util'
 import { Readable, Writable } from 'stream'
+import * as Crypto from 'crypto'
+
+const ENCRYPTION_ALGO = 'aes-256-cbc'
 
 export default class Filesystem {
     public webhook: Webhook
     public header: Map<FileSystemHeaderKey, string>
     public root: Directory
+    private cryptoKey: Buffer
 
-    constructor(webhookUrl: string) {
+    constructor(webhookUrl: string, cryptoKey?: string) {
         this.header = new Map()
         this.root = { type: 'directory', items: {} }
         this.webhook = new Webhook(webhookUrl)
+        if (cryptoKey)
+            this.cryptoKey = Buffer.from(cryptoKey)
 
         // Default properties; can be overriden by the data file
-        this.header.set('Filesystem-Version', '1.1')
+        this.header.set('Filesystem-Version', '2.0')
         this.header.set('Description', 'File system')
         this.header.set('Author', process.env.USER || 'null')
+        this.header.set('Uses-Encryption', 'False')
+        this.header.set('Encryption-InitializationVector', Crypto.randomBytes(16).toString('hex'))
+    }
+
+    public get usesEncryption() {
+        return this.header.has('Uses-Encryption') &&
+            this.header.get('Uses-Encryption').toLowerCase() === 'true'
     }
 
     public async loadDataFromStream(stream: Readable) {
