@@ -212,7 +212,7 @@ export default class Filesystem {
      * Sets an entry at the given path. Used internally in the createWriteStream
      * function, and when the filesystem is loaded.
      */
-    private setEntry(path: string, entry: Entry) {
+    public setEntry(path: string, entry: Entry) {
         const pathSegments = path.split('/').filter(l => l.length)
 
         let lastDir: Directory = this.root
