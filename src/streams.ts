@@ -92,7 +92,7 @@ export class RemoteReadStream extends Readable {
     async _read() {
         // End stream
         if (this.pieceIndex >= this.pieces.length)
-            this.push(null)
+            return this.push(null)
 
         const chunkUrl = 'https://cdn.discordapp.com/attachments/' + this.pieces[this.pieceIndex]
         let chunk: Buffer
