@@ -250,13 +250,18 @@ export default class Filesystem {
 
     /**
      * Uploads the file entry, as JSON, to the webhook. It can be used for sharing files or directories.
-     * @param entryName The name of the entry - it is added to the "name" property in the serialized JSON.
-     * @param entry The entry to be shared.
+     * @param entries[].entryName The name of the entry - it is added to the "name" property in the serialized JSON.
+     * @param entries[].entry The entry to be shared.
      * @returns The link to the shared entry.
      */
-    public async uploadFileEntry(entryName: string, entry: Entry): Promise<string> {
-        entry = Object.assign({ name: entryName }, entry)
-        const asBufferData = Buffer.from(JSON.stringify(entry), 'utf-8')
+    public async uploadFileEntry(entries: { entryName: string, entry: Entry }[]): Promise<string> {
+        const data: (Entry & { name: string })[] = []
+
+        for (const $ of entries) {
+            data.push(Object.assign({}, { name: $.entryName }, $.entry))
+        }
+
+        const asBufferData = Buffer.from(JSON.stringify(data), 'utf-8')
         return await this.webhook.uploadFile('entry', asBufferData)
     }
 }
