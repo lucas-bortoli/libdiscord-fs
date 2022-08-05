@@ -1,7 +1,18 @@
+import axios from 'axios'
 import _FollowRedirects from 'follow-redirects'
 const { https } = _FollowRedirects
 import FormData from 'form-data'
 import Utils from './utils.js'
+
+export interface IMessageSendOptions {
+    username?: string
+    content: string
+}
+
+export interface IMessage {
+    id: number,
+    content: string
+}
 
 export default class Webhook {
     public webhookUrl: string
@@ -76,5 +87,37 @@ export default class Webhook {
         }
 
         return msg.attachments[0].url
+    }
+
+    async sendMessage(opts: IMessageSendOptions) {
+        const response = await axios({
+            method: 'POST',
+            url: this.webhookUrl + '?wait=true',
+            responseType: 'json',
+            data: Object.assign({}, opts)
+        })
+        
+        return response.data as IMessage
+    }
+
+    async editMessage(id: number, opts: IMessageSendOptions) {
+        const response = await axios({
+            method: 'PATCH',
+            url: this.webhookUrl + '/messages/' + id + '?wait=true',
+            responseType: 'json',
+            data: Object.assign({}, opts)
+        })
+        
+        return response.data as IMessage
+    }
+
+    async getMessage(id: number) {
+        const response = await axios({
+            method: 'GET',
+            url: this.webhookUrl + '/messages/' + id,
+            responseType: 'json'
+        })
+        
+        return response.data as IMessage
     }
 }

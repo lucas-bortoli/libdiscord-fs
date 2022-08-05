@@ -21,7 +21,7 @@ export default class Filesystem {
         this.header.set('Filesystem-Version', '1.3')
         this.header.set('Description', 'File system')
         this.header.set('Author', process.env.USER || 'null')
-        this.header.set('Sync-Message', null)
+        this.header.set('Sync-Message', 'null')
     }
 
     public async loadDataFromStream(stream: Readable) {
