@@ -23,7 +23,7 @@ export default class CloudSync {
     private async getPointerMessage(): Promise<IMessage | null> {
         const msgId = this.fsx.header.get('Sync-Message');
 
-        if (msgId == null) {
+        if (!msgId) {
             return null;
         }
 
