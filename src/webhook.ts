@@ -10,7 +10,7 @@ export interface IMessageSendOptions {
 }
 
 export interface IMessage {
-    id: number,
+    id: string,
     content: string
 }
 
@@ -100,7 +100,7 @@ export default class Webhook {
         return response.data as IMessage
     }
 
-    async editMessage(id: number, opts: IMessageSendOptions) {
+    async editMessage(id: string, opts: IMessageSendOptions) {
         const response = await axios({
             method: 'PATCH',
             url: this.webhookUrl + '/messages/' + id + '?wait=true',
@@ -111,7 +111,7 @@ export default class Webhook {
         return response.data as IMessage
     }
 
-    async getMessage(id: number) {
+    async getMessage(id: string) {
         const response = await axios({
             method: 'GET',
             url: this.webhookUrl + '/messages/' + id,

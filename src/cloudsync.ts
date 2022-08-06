@@ -28,7 +28,7 @@ export default class CloudSync {
             return null;
         }
 
-        const msg = await this.fsx.webhook.getMessage(parseInt(msgId));
+        const msg = await this.fsx.webhook.getMessage(msgId);
 
         // Invalid message
         if (!msg.id) {
