@@ -87,7 +87,7 @@ export default class CloudSync {
      */
     async download() {
         const msg = await this.getOrCreatePointerMessage();
-        const match = msg.content.match(/\[(\.+)\]/);
+        const match = msg.content.match(/\[(.+)\]/);
 
         // Sync data doesn't exist
         if (!match) {
