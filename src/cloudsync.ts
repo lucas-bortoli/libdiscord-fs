@@ -2,6 +2,7 @@ import Filesystem from "./filesystem.js";
 import { File } from "./types";
 import Utils from "./utils.js";
 import { IMessage } from "./webhook";
+import { Readable, Writable } from "node:stream";
 
 export default class CloudSync {
     private fsx: Filesystem
@@ -23,7 +24,7 @@ export default class CloudSync {
     private async getPointerMessage(): Promise<IMessage | null> {
         const msgId = this.fsx.header.get('Sync-Message');
 
-        if (!msgId) {
+        if (!msgId || msgId === 'null') {
             return null;
         }
 
@@ -59,23 +60,26 @@ export default class CloudSync {
      * Overwrites the remote data file with the local state.
      */
     async upload() {
-        const remoteStream = await this.fsx.createWriteStream("/@@sync.dat");
+        // Collect fragments into memory
+        const dataFileBlob: Buffer = await new Promise<Buffer>((resolve, reject) => {
+            const chunks: Buffer[] = [];
 
-        await this.fsx.writeDataToStream(remoteStream);
+            const collectorStream = new Writable({
+                write(chunk, encoding, cb) {
+                    chunks.push(chunk);
+                    cb();
+                },
+                final(cb) {
+                    resolve(Buffer.concat(chunks));
+                    cb();
+                }
+            });
 
-        await new Promise<void>(resolve => {
-            remoteStream.once("finish", () => resolve());
+            this.fsx.writeDataToStream(collectorStream);
         });
 
-        const dataFilePtr = await this.fsx.getEntry("/@@sync.dat") as File;
-
-        const link = await this.fsx.uploadFileEntry([
-            { entry: dataFilePtr, entryName: "@@sync.dat" }
-        ])
-
-        this.fsx.rm("/@@sync.dat");
-
-        await this.updatePointerMessage(link);
+        const dataFileLink = await this.fsx.webhook.uploadFile("sync", dataFileBlob);
+        await this.updatePointerMessage(dataFileLink);
     }
 
     /**
@@ -91,11 +95,15 @@ export default class CloudSync {
         }
 
         const syncEntryUrl = match[1];
-        const entry = JSON.parse((await Utils.fetchBlob(syncEntryUrl)).toString("utf-8")) as File;
+        const blob = await Utils.fetchBlob(syncEntryUrl);
 
-        this.fsx.setEntry("/@@sync.dat", entry);
+        const memoryStream = new Readable({
+            read() {
+                this.push(blob);
+                this.push(null);
+            }
+        });
 
-        const remoteStream = await this.fsx.createReadStream("/@@sync.dat");
-        await this.fsx.loadDataFromStream(remoteStream);
+        await this.fsx.loadDataFromStream(memoryStream);
     }
 }
