@@ -22,6 +22,7 @@ export default class Filesystem {
         this.header.set('Description', 'File system')
         this.header.set('Author', process.env.USER || 'null')
         this.header.set('Sync-Message', 'null')
+        this.header.set('Last-Updated', Date.now().toString())
     }
 
     public async loadDataFromStream(stream: Readable) {
@@ -56,6 +57,8 @@ export default class Filesystem {
     }
 
     public async writeDataToStream(writable: Writable) {
+        this.header.set('Last-Updated', Date.now().toString())
+
         // Write header entries
         for (const [ key, value ] of this.header)
             writable.write(Buffer.from(`${key}: ${value}\n`, 'utf-8'))
