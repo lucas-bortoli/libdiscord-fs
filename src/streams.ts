@@ -127,7 +127,7 @@ export class RemoteReadStream extends Readable {
     async _read() {
         // End stream
         if (this.pieceIndex >= this.pieces.length) {
-            this.push(this.decipher.final())
+            if (this.decipher) this.push(this.decipher.final())
             return this.push(null)
         }
 
