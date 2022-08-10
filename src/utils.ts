@@ -74,8 +74,9 @@ export default class Utils {
 
     public static serializeFileEntry(file: File, path: string): string {
         let comment = Utils.escape(file.comment || '')
+        let encryptionIv = file.encryption ? file.encryption.iv : ''
 
-        return [ path, file.size.toString(), file.ctime.toString(), file.metaptr, comment ].join(':')
+        return [ path, file.size.toString(), file.ctime.toString(), file.metaptr, comment, encryptionIv ].join(':')
     }
 
     public static parseFileEntry(line: string): { path: string, file: File } {
@@ -86,7 +87,10 @@ export default class Utils {
             size: parseInt(elements[1]), 
             ctime: parseInt(elements[2]), 
             metaptr: elements[3],
-            comment: Utils.unescape(elements[4] ? elements[4] : '')
+            comment: Utils.unescape(elements[4] ? elements[4] : ''),
+            encryption: elements[5] ? {
+                iv: elements[5]
+            } : null
         }
 
         return { path: elements[0], file: fileEntry }

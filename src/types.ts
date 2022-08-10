@@ -5,7 +5,10 @@ export interface File {
     size: number,
     ctime: number,
     metaptr: string,
-    comment?: string
+    comment?: string,
+    encryption?: null|{
+        iv: string
+    }
 }
 
 export interface Directory {
