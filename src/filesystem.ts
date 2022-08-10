@@ -75,7 +75,7 @@ export default class Filesystem {
         writable.end()
     }
 
-    public async createReadStream(filePath: string): Promise<RemoteReadStream> {
+    public async createReadStream(filePath: string, decryptionKey?: string): Promise<RemoteReadStream> {
         const file = await this.getEntry(filePath)
 
         if (!file || file.type !== 'file')
@@ -85,7 +85,12 @@ export default class Filesystem {
         const piecesBlob = await Utils.fetchBlob(piecesUrl)
         const pieces = new TextDecoder('utf-8').decode(piecesBlob).split(',')
 
-        const stream = new RemoteReadStream(pieces)
+        const stream = new RemoteReadStream(pieces, decryptionKey ? {
+            // Only try to decrypt if there's a decryption key
+            enabled: decryptionKey ? true : false,
+            iv: file.encryption.iv,
+            key: decryptionKey
+        } : null);
         
         return stream
     }
@@ -97,13 +102,20 @@ export default class Filesystem {
      * @param filePath Where the file entry will be stored.
      * @param createEntry 
      * @param customEntryProperties Optional overrides for the filesystem entry
+     * @param encryptionKey Key for encryption, if left blank the file won't be encrypted
      */
-    public async createWriteStream(filePath: string, createEntry: boolean = true, customEntryProperties: Partial<File> = {}): Promise<RemoteWriteStream> {
+    public async createWriteStream(filePath: string, createEntry: boolean = true, customEntryProperties: Partial<File> = {}, encryptionKey?: string): Promise<RemoteWriteStream> {
         if (filePath.endsWith('/'))
             filePath = filePath.slice(0, -1)
             
+        const iv = Date.now().toString()
+
         // Extend writable stream with our own properties
-        const stream = new RemoteWriteStream(this.webhook)
+        const stream = new RemoteWriteStream(this.webhook, encryptionKey ? {
+            enabled: encryptionKey ? true: false,
+            iv: iv,
+            key: encryptionKey
+        } : null)
 
         stream.once('allUploadsDone', async (endStream) => {
             // Create file entry
@@ -111,7 +123,8 @@ export default class Filesystem {
                 type: 'file',
                 size: stream.writtenBytes,
                 ctime: Date.now(),
-                metaptr: stream.metaPtr.replace('https://cdn.discordapp.com/attachments/', '')
+                metaptr: stream.metaPtr.replace('https://cdn.discordapp.com/attachments/', ''),
+                encryption: encryptionKey ? { iv } : null
             }, customEntryProperties)
 
             // Write it into the database

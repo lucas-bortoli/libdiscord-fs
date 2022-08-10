@@ -1,8 +1,16 @@
 import { Readable, Writable } from 'stream'
 import Utils from './utils.js'
 import Webhook from './webhook.js'
+import { Cipher, createCipheriv, createDecipheriv } from 'node:crypto'
+import { Decipher } from 'crypto'
 
 const BLOCK_SIZE: number = Math.floor(7.6 * 1024 * 1024)
+
+type EncryptionInformation = {
+    enabled: boolean,
+    iv: string,
+    key: string
+}
 
 export class RemoteWriteStream extends Writable {
     private queue: Buffer[]
@@ -14,14 +22,22 @@ export class RemoteWriteStream extends Writable {
 
     public metaPtr: string
 
-    constructor(webhook: Webhook) {
+    public encryption?: EncryptionInformation
+    public cipher?: Cipher
+
+    constructor(webhook: Webhook, encryption?: EncryptionInformation) {
         super({ decodeStrings: false })
 
         this.webhook = webhook
+        this.encryption = encryption
         this.uploadedBytes = 0
         this.writtenBytes = 0
         this.queue = []
         this.piecePointers = []
+
+        if (this.encryption && this.encryption.enabled) {
+            this.cipher = createCipheriv('aes-128-cbc', this.encryption.key, this.encryption.iv)
+        }
     }
 
     /**
@@ -40,6 +56,11 @@ export class RemoteWriteStream extends Writable {
     async _write(chunk: Buffer, encoding, cb) {
         if (!Buffer.isBuffer(chunk))
             return cb(new TypeError('Provided chunk isn\'t a Buffer! Make sure to not specify any encoding on the stream piped to Filesystem#createWriteStream.'))
+
+        if (this.cipher) {
+            // Encrypt the chunk
+            chunk = this.cipher.update(chunk)
+        }
 
         this.writtenBytes += chunk.length
 
@@ -64,6 +85,12 @@ export class RemoteWriteStream extends Writable {
         let buffer = Buffer.concat(this.queue)
         await this.flush(buffer)
 
+        if (this.cipher) {
+            // Use one more call for remaining data (I can't guarantee it won't exceed the 7.8mb limit on the queue)
+            let remainingEncryptedData = this.cipher.final()
+            await this.flush(remainingEncryptedData)
+        }
+
         buffer = null
         this.queue = []
 
@@ -81,18 +108,28 @@ export class RemoteReadStream extends Readable {
 
     public readBytes: number
 
-    constructor(pieceList: string[]) {
+    public encryption?: EncryptionInformation
+    public decipher?: Decipher
+
+    constructor(pieceList: string[], encryption?: EncryptionInformation) {
         super()
 
         this.pieceIndex = 0
         this.pieces = pieceList
         this.readBytes = 0
+        
+        if (encryption) {
+            this.encryption = encryption
+            this.decipher = createDecipheriv('aes-128-cbc', encryption.key, encryption.iv)
+        }
     }
 
     async _read() {
         // End stream
-        if (this.pieceIndex >= this.pieces.length)
+        if (this.pieceIndex >= this.pieces.length) {
+            this.push(this.decipher.final())
             return this.push(null)
+        }
 
         const chunkUrl = 'https://cdn.discordapp.com/attachments/' + this.pieces[this.pieceIndex]
         let chunk: Buffer
@@ -107,7 +144,12 @@ export class RemoteReadStream extends Readable {
             }
         } while (!chunk)
         
-        const asBuffer = Buffer.from(chunk)
+        let asBuffer = Buffer.from(chunk)
+
+        if (this.decipher) {
+            // Decrypt this chunk
+            asBuffer = this.decipher.update(asBuffer)
+        }
 
         this.push(asBuffer)
 
