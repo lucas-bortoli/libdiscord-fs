@@ -85,7 +85,7 @@ export default class Filesystem {
         const piecesBlob = await Utils.fetchBlob(piecesUrl)
         const pieces = new TextDecoder('utf-8').decode(piecesBlob).split(',')
 
-        const stream = new RemoteReadStream(pieces, decryptionKey ? {
+        const stream = new RemoteReadStream(pieces, (decryptionKey && file.encryption?.iv) ? {
             // Only try to decrypt if there's a decryption key
             enabled: decryptionKey ? true : false,
             iv: file?.encryption?.iv,
