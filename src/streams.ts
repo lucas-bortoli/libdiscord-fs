@@ -2,7 +2,7 @@ import { Readable, Writable } from 'stream'
 import Utils from './utils.js'
 import Webhook from './webhook.js'
 import { Cipher, createCipheriv, createDecipheriv } from 'node:crypto'
-import { Decipher } from 'crypto'
+import { Decipher, createHash } from 'crypto'
 
 const BLOCK_SIZE: number = Math.floor(7.6 * 1024 * 1024)
 
@@ -36,7 +36,9 @@ export class RemoteWriteStream extends Writable {
         this.piecePointers = []
 
         if (this.encryption && this.encryption.enabled && this.encryption.key && this.encryption.iv) {
-            this.cipher = createCipheriv('aes-128-cbc', this.encryption.key, this.encryption.iv)
+            const key = createHash('sha256').update(this.encryption.key).digest()
+            const iv = createHash('sha256').update(this.encryption.iv).digest().slice(0, 16)
+            this.cipher = createCipheriv('aes-256-cbc', key, iv)
         }
     }
 
@@ -119,8 +121,10 @@ export class RemoteReadStream extends Readable {
         this.readBytes = 0
         
         if (encryption && encryption.enabled && encryption.key && encryption.iv) {
+            const key = createHash('sha256').update(this.encryption.key).digest()
+            const iv = createHash('sha256').update(this.encryption.iv).digest().slice(0, 16)
             this.encryption = encryption
-            this.decipher = createDecipheriv('aes-128-cbc', encryption.key, encryption.iv)
+            this.decipher = createDecipheriv('aes-256-cbc', key, iv)
         }
     }
 
