@@ -88,7 +88,7 @@ export default class Filesystem {
         const stream = new RemoteReadStream(pieces, decryptionKey ? {
             // Only try to decrypt if there's a decryption key
             enabled: decryptionKey ? true : false,
-            iv: file.encryption.iv,
+            iv: file?.encryption?.iv,
             key: decryptionKey
         } : null);
         

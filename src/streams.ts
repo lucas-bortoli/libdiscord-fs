@@ -35,7 +35,7 @@ export class RemoteWriteStream extends Writable {
         this.queue = []
         this.piecePointers = []
 
-        if (this.encryption && this.encryption.enabled) {
+        if (this.encryption && this.encryption.enabled && this.encryption.key && this.encryption.iv) {
             this.cipher = createCipheriv('aes-128-cbc', this.encryption.key, this.encryption.iv)
         }
     }
@@ -118,7 +118,7 @@ export class RemoteReadStream extends Readable {
         this.pieces = pieceList
         this.readBytes = 0
         
-        if (encryption) {
+        if (encryption && encryption.enabled && encryption.key && encryption.iv) {
             this.encryption = encryption
             this.decipher = createDecipheriv('aes-128-cbc', encryption.key, encryption.iv)
         }
