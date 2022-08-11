@@ -88,7 +88,7 @@ export default class Filesystem {
         const stream = new RemoteReadStream(pieces, (decryptionKey && file.encryption?.iv) ? {
             // Only try to decrypt if there's a decryption key
             enabled: decryptionKey ? true : false,
-            iv: file?.encryption?.iv,
+            iv: Buffer.from(file.encryption.iv, 'base64'),
             key: decryptionKey
         } : null);
         
@@ -108,7 +108,7 @@ export default class Filesystem {
         if (filePath.endsWith('/'))
             filePath = filePath.slice(0, -1)
             
-        const iv = Date.now().toString()
+        const iv = Utils.generateCryptoIv()
 
         // Extend writable stream with our own properties
         const stream = new RemoteWriteStream(this.webhook, encryptionKey ? {
@@ -124,7 +124,7 @@ export default class Filesystem {
                 size: stream.writtenBytes,
                 ctime: Date.now(),
                 metaptr: stream.metaPtr.replace('https://cdn.discordapp.com/attachments/', ''),
-                encryption: encryptionKey ? { iv } : null
+                encryption: encryptionKey ? { iv: iv.toString('base64') } : null
             }, customEntryProperties)
 
             // Write it into the database

@@ -8,7 +8,7 @@ const BLOCK_SIZE: number = Math.floor(7.6 * 1024 * 1024)
 
 type EncryptionInformation = {
     enabled: boolean,
-    iv: string,
+    iv: Buffer,
     key: string
 }
 
@@ -129,7 +129,7 @@ export class RemoteReadStream extends Readable {
         if (this.pieceIndex >= this.pieces.length) {
             if (this.decipher)
                 this.push(this.decipher.final())
-                
+
             return this.push(null)
         }
 
