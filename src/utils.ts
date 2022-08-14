@@ -1,5 +1,6 @@
 import _FollowRedirects from 'follow-redirects'
 import { File } from './types.js'
+import { randomBytes } from "node:crypto"
 const { https } = _FollowRedirects
 
 export const UtilEscapeMapping: { [key: string]: string } = {
@@ -94,5 +95,9 @@ export default class Utils {
         }
 
         return { path: elements[0], file: fileEntry }
+    }
+
+    public static generateCryptoIv(): Buffer {
+        return randomBytes(16)
     }
 }
