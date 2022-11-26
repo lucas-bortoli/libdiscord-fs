@@ -1,6 +1,4 @@
-import _FollowRedirects from 'follow-redirects'
 import { File } from './types.js'
-const { https } = _FollowRedirects
 
 export const UtilEscapeMapping: { [key: string]: string } = {
     ':': '[[Begin--COLON--End',
@@ -23,33 +21,12 @@ export default class Utils {
      * @param url 
      * @returns 
      */
-    public static fetchBlob(resourceUrl: string): Promise<Buffer> {
-        return new Promise((resolve, reject) => {
-            const url = new URL(resourceUrl)
+    public static async fetchBlob(resourceUrl: string): Promise<Buffer> {
+        const arrayBuffer = await fetch(resourceUrl, {
+            method: 'GET'
+        }).then(r => r.arrayBuffer())
 
-            const req = https.request({
-                protocol: url.protocol,
-                hostname: url.hostname,
-                path: url.pathname,
-                port: url.port,
-                method: 'GET'
-            }, res => {
-                let data: Buffer[] = []
-
-                res.on('data', chunk => data.push(chunk))
-
-                res.on('error', err => {
-                    data = null
-                    reject(err)
-                })
-
-                res.once('end', () => {
-                    resolve(Buffer.concat(data))
-                })
-            })
-
-            req.end()
-        })
+        return Buffer.from(arrayBuffer)
     }
 
     public static escape(original: string): string {

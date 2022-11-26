@@ -1,6 +1,4 @@
-import axios from 'axios'
-import _FollowRedirects from 'follow-redirects'
-const { https } = _FollowRedirects
+import fetch from 'cross-fetch'
 import FormData from 'form-data'
 import Utils from './utils.js'
 
@@ -35,51 +33,21 @@ export default class Webhook {
         
         while (!msg) {
             try {
-                const body = await new Promise<Buffer>((resolve, reject) => {
-                    const url = new URL(this.webhookUrl + '?wait=true')
-                    let form = new FormData()
-        
-                    form.append('payload_json', JSON.stringify({
-                        files: [
-                            { id: 0, filename: fileName }
-                        ]
-                    }))
-        
-                    form.append('files[0]', data, { filename: fileName, contentType: 'application/octet-stream' })
-        
-                    const req = https.request({
-                        protocol: url.protocol,
-                        hostname: url.hostname,
-                        path: url.pathname,
-                        port: url.port,
-                        method: 'POST',
-                        headers: form.getHeaders()
-                    }, res => {
-                        let data: Buffer[] = []
-        
-                        res.on('data', chunk => data.push(chunk))
+                const form = new FormData()
 
-                        res.on('error', err => {
-                            data = null
-                            form.destroy()
-                            form = null
-                            data = null
-                            reject(err)
-                        })
+                form.append('payload_json', JSON.stringify({
+                    files: [
+                        { id: 0, filename: fileName }
+                    ]
+                }))
 
-                        res.once('end', () => {
-                            resolve(Buffer.concat(data))
-                            data = null
-                            form.destroy()
-                            form = null
-                            data = null
-                        })
-                    })
-            
-                    form.pipe(req)
-                })
+                form.append('files[0]', data, { filename: fileName, contentType: 'application/octet-stream' })
 
-                msg = JSON.parse(body.toString('utf-8'))
+                msg = await fetch(this.webhookUrl + '?wait=true', {
+                    method: 'POST',
+                    headers: form.getHeaders(),
+                    body: form.getBuffer()
+                }).then(r => r.json())
             } catch(error) {
                 console.error('Error while uploading file. Trying again.', error)
                 await Utils.Wait(3000)
@@ -90,34 +58,28 @@ export default class Webhook {
     }
 
     async sendMessage(opts: IMessageSendOptions) {
-        const response = await axios({
+        const response = await fetch(this.webhookUrl + '?wait=true', {
             method: 'POST',
-            url: this.webhookUrl + '?wait=true',
-            responseType: 'json',
-            data: Object.assign({}, opts)
+            body: JSON.stringify(opts)
         })
         
-        return response.data as IMessage
+        return (await response.json()) as IMessage
     }
 
     async editMessage(id: string, opts: IMessageSendOptions) {
-        const response = await axios({
-            method: 'PATCH',
-            url: this.webhookUrl + '/messages/' + id + '?wait=true',
-            responseType: 'json',
-            data: Object.assign({}, opts)
+        const response = await fetch(this.webhookUrl + '/messages/' + id + '?wait=true', {
+            method: 'POST',
+            body: JSON.stringify(opts)
         })
-        
-        return response.data as IMessage
+
+        return (await response.json()) as IMessage
     }
 
     async getMessage(id: string) {
-        const response = await axios({
+        const response = await fetch(this.webhookUrl + '/messages/' + id, {
             method: 'GET',
-            url: this.webhookUrl + '/messages/' + id,
-            responseType: 'json'
         })
         
-        return response.data as IMessage
+        return (await response.json()) as IMessage
     }
 }
